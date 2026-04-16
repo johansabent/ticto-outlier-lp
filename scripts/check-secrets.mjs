@@ -9,7 +9,7 @@ const FORBIDDEN = [
   'YAYFORMS_FIELD_MAP',
 ];
 
-const SCAN_ROOTS = ['.next/static', 'out'];
+const SCAN_ROOTS = ['.next/static', '.next/server/app', 'out'];
 
 const normalize = (p) => p.replace(/\\/g, '/');
 
@@ -30,8 +30,11 @@ async function walk(dir) {
   return files;
 }
 
-function onlyClient(path) {
-  return path.includes('.next/static/') || path.startsWith('out/');
+function onlyClient(p) {
+  if (p.startsWith('out/')) return true;
+  if (p.includes('.next/static/')) return true;
+  if (p.includes('.next/server/app/') && /\.(html|rsc)$/.test(p)) return true;
+  return false;
 }
 
 async function main() {
@@ -41,7 +44,7 @@ async function main() {
     for (const f of files) {
       const fp = normalize(f);
       if (!onlyClient(fp)) continue;
-      if (!/\.(js|mjs|cjs|html|json)$/.test(fp)) continue;
+      if (!/\.(js|mjs|cjs|html|json|rsc)$/.test(fp)) continue;
       const body = await readFile(f, 'utf8').catch(() => '');
       for (const key of FORBIDDEN) {
         if (body.includes(key)) hits.push({ file: fp, key });
