@@ -1,7 +1,7 @@
 # ADR: YayForms webhook authentication mode
 
 **Date:** 2026-04-15
-**Status:** Decided
+**Status:** SUPERSEDED on 2026-04-16 by [`2026-04-16-typeform-webhook-auth.md`](./2026-04-16-typeform-webhook-auth.md). Reviewer pivot from YayForms to Typeform. Preserved for audit trail — do NOT implement against this document.
 **Context source:** Day-0 discovery spike (Task 1 of implementation plan)
 
 ## Decision

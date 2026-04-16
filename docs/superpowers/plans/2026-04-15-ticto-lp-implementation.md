@@ -1,12 +1,12 @@
-# Ticto LP Outlier Experience Implementation Plan
+# Ticto LP Ebulição Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deploy a production landing page that renders a YayForms embed, captures 7 tracking params (UTM + sck + src), forwards submissions to Datacrazy CRM via a server-side webhook handler, and ships with full CI, E2E coverage (Datacrazy mocked), screencast evidence, and a public GitHub repo — end-to-end within a 72h window.
+**Goal:** Deploy a production landing page (Ticto × Ebulição — iPhone 16 Pro raffle, Rafa Prado event) that renders a Typeform embed, captures 7 tracking params (UTM + sck + src), forwards submissions to Datacrazy CRM via a server-side webhook handler, and ships with full CI, E2E coverage (Datacrazy mocked), screencast evidence, and a public GitHub repo — end-to-end within a 72h window.
 
-**Architecture:** Next.js 16.2 App Router on Vercel Fluid Compute (Node 24). Browser loads LP → a client UTM rehydrator (useLayoutEffect + localStorage + history.replaceState) ensures the 7 params are present in the URL before the YayForms inline embed mounts, which inherits them via `data-yf-transitive-search-params`. YayForms delivers a signed webhook to `/api/lead` → the Route Handler validates auth (mode decided by a day-0 discovery spike), maps `{field_id: {content}}` → named fields via a registry, transforms to a 3-layer Datacrazy payload (`source`, `sourceReferral.sourceUrl`, `notes` as structured JSON), and POSTs to `https://api.g1.datacrazy.io/api/v1/leads`. All secrets live server-side; `proxy.ts` only sets security headers.
+**Architecture:** Next.js 16.2 App Router on Vercel Fluid Compute (Node 24). Browser loads LP → a client UTM rehydrator (useLayoutEffect + localStorage + history.replaceState) ensures the 7 params are present in the URL before the Typeform inline embed mounts, which inherits them via the React SDK `hidden` prop. Typeform delivers a signed webhook to `/api/lead` → the Route Handler validates HMAC auth (single mode — Typeform is hmac-only), maps answer array by `field.ref` → named fields via a registry, transforms to a 3-layer Datacrazy payload (`source`, `sourceReferral.sourceUrl`, `notes` as structured JSON), and POSTs to `https://api.g1.datacrazy.io/api/v1/leads`. All secrets live server-side; `proxy.ts` only sets security headers.
 
-**Tech Stack:** Next.js ^16.2 (App Router, `proxy.ts`, async Request APIs), TypeScript ^5.1, Node.js 24 LTS on Vercel Fluid Compute, Tailwind CSS ^4 (CSS-first via `@theme`, no `tailwind.config.ts`), shadcn/ui CLI ^4 (Radix + `data-slot`), `tw-animate-css`, Zod, `@vercel/functions` (waitUntil), Vitest + React Testing Library, Playwright ^1.59, pnpm, Vercel + GitHub integration, GitHub Actions (CI + E2E against Preview URL + Claude Code Action).
+**Tech Stack:** Next.js ^16.2 (App Router, `proxy.ts`, async Request APIs), TypeScript ^5.1, Node.js 24 LTS on Vercel Fluid Compute, Tailwind CSS ^4 (CSS-first via `@theme`, no `tailwind.config.ts`), shadcn/ui CLI ^4 (Radix + `data-slot`), `tw-animate-css`, Zod, `@vercel/functions` (waitUntil), `@typeform/embed-react` ^4, Vitest + React Testing Library, Playwright ^1.59, pnpm, Vercel + GitHub integration, GitHub Actions (CI + E2E against Preview URL + Claude Code Action).
 
 ---
 
@@ -37,13 +37,13 @@ Every path is under the project root `ticto-new/`. Create each file in the task 
 - `src/app/api/lead/route.ts` — webhook POST handler (Node runtime)
 - `src/components/ui/` — shadcn primitives (added incrementally by Task 17)
 - `src/components/sections/hero.tsx`, `about.tsx`, `speakers.tsx`, `cta.tsx`, `footer.tsx` — RSC
-- `src/components/yayforms-embed.tsx` — client: injects embed script + div
+- `src/components/typeform-embed.tsx` — client: `@typeform/embed-react` Widget with `hidden` prop
 - `src/components/utm-rehydrator.tsx` — client: `useLayoutEffect` first-touch + replaceState
 - `src/lib/env.ts` — Zod schema, fail-fast on boot
 - `src/lib/logger.ts` — JSON structured log + PII redaction
-- `src/lib/yayforms-fields.ts` — field-ID registry (env-backed map)
-- `src/lib/webhook-auth.ts` — multi-mode validator (hmac / secret_path / shared_secret)
-- `src/lib/utm-mapping.ts` — YayForms payload → Datacrazy (3-layer)
+- `src/lib/typeform-fields.ts` — field-ref registry (stable refs, not IDs)
+- `src/lib/webhook-auth.ts` — HMAC-only validator (Typeform single mode)
+- `src/lib/utm-mapping.ts` — Typeform payload → Datacrazy (3-layer)
 - `src/lib/datacrazy.ts` — `fetch` client with 429 retry + timeout
 - `src/lib/attribution.ts` — localStorage helpers (pure; SSR-safe)
 - `src/proxy.ts` — security headers only
@@ -51,12 +51,13 @@ Every path is under the project root `ticto-new/`. Create each file in the task 
 **Tests (`tests/`):**
 - `tests/unit/env.test.ts`
 - `tests/unit/logger.test.ts`
-- `tests/unit/yayforms-fields.test.ts`
+- `tests/unit/typeform-fields.test.ts`
 - `tests/unit/webhook-auth.test.ts`
 - `tests/unit/utm-mapping.test.ts`
 - `tests/unit/datacrazy.test.ts`
 - `tests/unit/attribution.test.ts`
 - `tests/e2e/lead-flow.spec.ts`
+- `tests/fixtures/typeform-webhook.json`
 
 **Scripts (`scripts/`):**
 - `scripts/check-secrets.mjs` — grep `.next` + `out` for secret tokens
@@ -70,135 +71,90 @@ Every path is under the project root `ticto-new/`. Create each file in the task 
 - `.github/PULL_REQUEST_TEMPLATE.md`
 
 **Docs (`docs/`):**
-- `docs/decisions/2026-04-15-webhook-auth.md` — day-0 ADR, created in Task 1
-- `docs/design-tokens.json` — Figma one-shot extraction, created in Task 16
+- `docs/decisions/2026-04-15-webhook-auth.md` — SUPERSEDED YayForms ADR (historical context only)
+- `docs/decisions/2026-04-16-typeform-webhook-auth.md` — canonical Typeform ADR, created in Task 1
 
 ---
 
 ## Task ordering note
 
-Tasks are numbered in the order the engineer should execute them. Each task declares its dependencies. The day-0 spike (Task 1) is `agent:pair` — it requires a human to create external accounts and inspect real traffic. Tasks 1 and 2 can run in parallel if two humans are available; otherwise do 1 first. Tasks 6–10 (pure libs) can be executed in parallel subagents once Task 5 is complete.
+Tasks are numbered in the order the engineer should execute them. Each task declares its dependencies. Task 1 (Typeform spike) is `agent:ok` — it is already DONE; proceed to Task 2. Tasks 6–10 (pure libs) can be executed in parallel subagents once Task 5 is complete. Tasks 16 and 17 depend on Task 15 (TypeformEmbed) for the form slot.
 
 ---
 
-### Task 1: [SPIKE] Day-0 — Discover YayForms webhook auth format (agent:pair, BLOCKER for Task 8 and 12)
+### Task 1: [SPIKE] Day-0 — Discover Typeform webhook auth format (agent:ok, DONE — unblocks Tasks 8 and 11)
 
 **Files:**
-- Create: `docs/decisions/2026-04-15-webhook-auth.md`
-- Modify: none
-- Test: this task is a manual discovery spike; verification is a real webhook captured with real headers. No unit test.
+- Created: `docs/decisions/2026-04-16-typeform-webhook-auth.md` (canonical ADR — already committed)
+- Historical reference only (do not modify): `docs/decisions/2026-04-15-webhook-auth.md` (SUPERSEDED YayForms ADR)
+- Create: `tests/fixtures/typeform-webhook.json` (canonical fixture from ADR)
+- Test: none (this was a manual discovery spike; a real webhook was captured and documented)
 
-**Handoff:** This task is `agent:pair`. The agent cannot create external accounts. The human performs Steps 1–5; the agent writes the ADR in Step 6 from the human's findings.
+**Status: DONE.** This spike was completed on 2026-04-16 and captured in `docs/decisions/2026-04-16-typeform-webhook-auth.md`. All findings below are from that ADR. Tasks 8 and 11 are unblocked.
 
-- [ ] **Step 1 (HUMAN): Create YayForms account and test form**
+**Summary of findings:**
+- Platform: **Typeform** (replaced YayForms per reviewer request — stronger documentation, `@typeform/embed-react` SDK)
+- Form ID: **`FbFMsO5x`** (already created with 5 fields + 7 UTM hidden fields + V2 webhook)
+- Auth mode: **hmac** (single mode — Typeform only offers HMAC; no multi-mode switching needed)
+- Signature header: **`typeform-signature`** (lowercase), format **`sha256=<base64>`**
+- Encoding: **base64** (not hex — important difference from the original YayForms ADR)
+- No timestamp header — use `form_response.submitted_at` for a 5-minute replay window
+- Fixture body: canonical in `tests/fixtures/typeform-webhook.json` (see below)
+- Blockers cleared: Tasks 8 and 11 unblocked; no `WEBHOOK_AUTH_MODE` env var needed (single mode)
 
-Sign up at `https://yayforms.com`. Create the "real" form that will ship with the LP — do not use a throwaway. Fields:
-- `nome` (short text, required)
-- `email` (email, required)
-- `telefone` (phone, required)
-- 7 **hidden fields**: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck`, `src` (all string, all hidden)
+**Field registry (stable refs — key by `field.ref`, never by `field.id`):**
 
-Copy each field's `field_id` (short token shown in YayForms' field editor or in the share-embed code preview). Paste into a scratch note:
-```
-nome:      <id>
-email:     <id>
-telefone:  <id>
-utm_source:    <id>
-utm_medium:    <id>
-utm_campaign:  <id>
-utm_content:   <id>
-utm_term:      <id>
-sck:           <id>
-src:           <id>
-```
+| Ref | Type | Required |
+|---|---|---|
+| `nome` | `short_text` | yes |
+| `cpf` | `short_text` | yes |
+| `email` | `email` | yes |
+| `telefone` | `phone_number` | yes |
+| `sells_online` | `multiple_choice` | yes |
 
-- [ ] **Step 2 (HUMAN): Configure embed on the form**
+**Hidden fields (7 UTMs, declared in Typeform form config):**
+`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck`, `src`
 
-In **Share** → **Embed**: select **STANDARD inline**. Add the 7 transitive search params (comma-separated) to `data-yf-transitive-search-params`. Save the form ID and the embed script URL (both appear in the generated snippet). Keep those tokens — they become env vars later.
+- [ ] **Step 1: Create the canonical test fixture**
 
-- [ ] **Step 3 (HUMAN): Point webhook at inspection endpoint**
-
-Open `https://webhook.site` in a new tab and copy its unique URL. In YayForms **Integrate** → **Webhooks**: add webhook, URL = the webhook.site URL, format = **V2**. If the form asks for a secret, generate one and record it.
-
-- [ ] **Step 4 (HUMAN): Submit the form end-to-end**
-
-Open the form's **Share** link in a browser (YayForms hosted page). Fill with dummy data (`Teste QA`, `teste@example.com`, `+5511900000000`). Append query string with all 7 params (any values). Submit.
-
-- [ ] **Step 5 (HUMAN): Inspect the webhook.site request**
-
-Record these details into the scratch note:
-- **All request headers** (capture the full list; key names vary). Look specifically for:
-  - `X-YayForms-Signature` / `X-Signature` / `X-Hub-Signature-256` / any `sig` header
-  - `X-YayForms-Timestamp` / any timestamp header
-  - A static secret header YayForms lets you configure
-- **Body (raw)** — copy the JSON verbatim (this becomes a fixture for Task 8).
-- **Content-Type**
-- **Source IP**
-
-Decide one of three modes:
-- **hmac** — at least one signature header is present → Camera A (HMAC SHA256)
-- **shared_secret** — there's a custom header you can set in YayForms (e.g., `X-Webhook-Secret`) with a fixed value → Camera C
-- **secret_path** — nothing above works → Camera B (put a random token in the URL path, e.g., `/api/lead/<RANDOM>`)
-
-- [ ] **Step 6 (AGENT): Write the ADR**
-
-Create `docs/decisions/2026-04-15-webhook-auth.md` with this exact structure — fill the `<PLACEHOLDERS>` from the human's findings in Step 5:
-
-```markdown
-# ADR: YayForms webhook authentication mode
-
-**Date:** 2026-04-15
-**Status:** Decided
-**Context source:** Day-0 discovery spike (Task 1 of implementation plan)
-
-## Decision
-
-Mode: **<hmac | shared_secret | secret_path>**
-
-## Evidence captured
-
-Raw headers received at webhook.site:
-```
-<paste full header dump>
-```
-
-Raw body:
+Create `tests/fixtures/typeform-webhook.json`:
 ```json
-<paste full JSON body>
+{
+  "event_id": "01KPC1H3VJSS9SP8FC4983BD4A",
+  "event_type": "form_response",
+  "form_response": {
+    "form_id": "FbFMsO5x",
+    "token": "p7zn6z8fnns6o0kdj1p7zn6zs6ltyxr5",
+    "landed_at": "2026-04-16T21:00:12Z",
+    "submitted_at": "2026-04-16T21:00:39Z",
+    "hidden": {
+      "sck": "testclick",
+      "src": "lp",
+      "utm_campaign": "test",
+      "utm_content": "banner",
+      "utm_medium": "cpc",
+      "utm_source": "google",
+      "utm_term": "ai"
+    },
+    "answers": [
+      { "type": "text",         "text": "Teste QA",               "field": { "ref": "nome",         "type": "short_text" } },
+      { "type": "text",         "text": "12345678900",            "field": { "ref": "cpf",          "type": "short_text" } },
+      { "type": "email",        "email": "teste@example.com",     "field": { "ref": "email",        "type": "email" } },
+      { "type": "phone_number", "phone_number": "+5511900000000", "field": { "ref": "telefone",     "type": "phone_number" } },
+      { "type": "choice",       "choice": { "label": "Sim", "ref": "490ea062-6100-416d-96fa-17e8e8991a4e" }, "field": { "ref": "sells_online", "type": "multiple_choice" } }
+    ]
+  }
+}
 ```
 
-## Rationale
-
-<2–4 sentences on why the chosen mode was the best available given the evidence. If HMAC: name the signature header and the assumed payload (body only vs timestamp.body). If shared_secret: name the header and the value's entropy. If secret_path: explain the token length and rotation plan.>
-
-## Implementation notes for Task 8 (`lib/webhook-auth.ts`)
-
-- Signature header (if hmac): `<X-YayForms-Signature or similar>`
-- Timestamp header (if present): `<name>` — 5-min window
-- Payload for HMAC (if hmac): `<body | timestamp + "." + body>`
-- Encoding: `hex` (YayForms emits hex; do not assume base64 without evidence)
-- Secret env var: `YAYFORMS_WEBHOOK_SECRET`
-- `WEBHOOK_AUTH_MODE` env value: `<hmac | shared_secret | secret_path>`
-
-## Fixture for tests
-
-Sample payload (PII redacted) that `tests/unit/webhook-auth.test.ts` and `tests/unit/utm-mapping.test.ts` will use:
-
-```json
-<paste body with `nome` → "Teste QA", `email` → "teste@example.com", `telefone` → "+5511900000000" preserved; UTM values preserved>
-```
-```
-
-- [ ] **Step 7: Commit**
-
-> **Note:** this commit lands after Task 2 initializes the repo. If you execute Task 1 before Task 2, hold the ADR file locally; commit it as the first content after `git init`. If Task 2 ran first, commit now:
+- [ ] **Step 2: Commit**
 
 ```bash
-git add docs/decisions/2026-04-15-webhook-auth.md
-git commit -m "docs(spike): capture YayForms webhook auth mode from day-0 discovery"
+git add tests/fixtures/typeform-webhook.json docs/decisions/2026-04-16-typeform-webhook-auth.md
+git commit -m "docs(spike): capture Typeform webhook auth mode from day-0 discovery"
 ```
 
-**Acceptance:** ADR committed with real header dump and a sample body. Downstream tasks (8, 12) reference `WEBHOOK_AUTH_MODE` from this ADR.
+**Acceptance:** ADR present at `docs/decisions/2026-04-16-typeform-webhook-auth.md` with real header dump and fixture body. Fixture at `tests/fixtures/typeform-webhook.json`. Tasks 8 and 11 can proceed.
 
 ---
 
@@ -267,19 +223,19 @@ git commit -m "chore: bootstrap repo with existing specs, research, and agent do
 - [ ] **Step 4: Create public GitHub repo via gh CLI**
 
 ```bash
-gh repo create johansabent/ticto-outlier-lp \
+gh repo create johansabent/ticto-ebulicao-lp \
   --public \
-  --description "Landing page Outlier Experience — Next.js 16 + YayForms + Datacrazy CRM. Teste técnico Ticto 2026." \
+  --description "Landing page Ebulição × Ticto — Next.js 16 + Typeform + Datacrazy CRM. Teste técnico Ticto 2026." \
   --source . \
   --push
 ```
 
-Expected output: a URL like `https://github.com/johansabent/ticto-outlier-lp` and the initial commit pushed.
+Expected output: a URL like `https://github.com/johansabent/ticto-ebulicao-lp` and the initial commit pushed.
 
 - [ ] **Step 5: Apply repo topics**
 
 ```bash
-gh repo edit johansabent/ticto-outlier-lp --add-topic nextjs,typescript,tailwindcss,shadcn-ui,vercel,webhook,crm-integration,lead-capture,landing-page,automation
+gh repo edit johansabent/ticto-ebulicao-lp --add-topic nextjs,typescript,tailwindcss,shadcn-ui,vercel,webhook,crm-integration,lead-capture,landing-page,automation
 ```
 
 - [ ] **Step 6: Create the label taxonomy from spec §16.1**
@@ -321,28 +277,28 @@ Expected: 23 labels created or updated.
 
 ```bash
 vercel login      # one-time, if not already logged in
-vercel link --yes --project ticto-outlier-lp --scope johansabent
+vercel link --yes --project ticto-ebulicao-lp --scope johansabent
 ```
 
 Expected: `.vercel/project.json` created (already gitignored). If the project doesn't exist Vercel will prompt to create it; accept defaults.
 
 - [ ] **Step 8: Enable GitHub integration**
 
-Open `https://vercel.com/johansabent/ticto-outlier-lp/settings/git` and confirm the repo is connected. Set production branch = `main`. Leave Preview = all other branches.
+Open `https://vercel.com/johansabent/ticto-ebulicao-lp/settings/git` and confirm the repo is connected. Set production branch = `main`. Leave Preview = all other branches.
 
 > Can also be done via `vercel git connect`; GUI is faster for 72h.
 
 - [ ] **Step 9: Verify**
 
 ```bash
-gh repo view johansabent/ticto-outlier-lp --json url,visibility,isPrivate
+gh repo view johansabent/ticto-ebulicao-lp --json url,visibility,isPrivate
 ```
 Expected: `"visibility": "PUBLIC"`, `"isPrivate": false`.
 
 ```bash
 vercel project ls
 ```
-Expected: `ticto-outlier-lp` appears.
+Expected: `ticto-ebulicao-lp` appears.
 
 No commit for this task — only config and remote-side setup.
 
@@ -380,7 +336,7 @@ Open `package.json`, replace `scripts` + `dependencies` + `devDependencies` enti
 
 ```json
 {
-  "name": "ticto-outlier-lp",
+  "name": "ticto-ebulicao-lp",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
@@ -451,8 +407,8 @@ const config: NextConfig = {
   reactStrictMode: true,
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'embed.yayforms.com' },
-      { protocol: 'https', hostname: 'cdn.yayforms.com' },
+      { protocol: 'https', hostname: 'form.typeform.com' },
+      { protocol: 'https', hostname: 'images.typeform.com' },
     ],
   },
 };
@@ -533,10 +489,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
-  title: 'Outlier Experience — Ticto',
+  title: 'Ebulição — Ticto',
   description: 'O principal evento presencial de marketing digital da Ticto.',
   openGraph: {
-    title: 'Outlier Experience — Ticto',
+    title: 'Ebulição — Ticto',
     description: 'O principal evento presencial de marketing digital da Ticto.',
     type: 'website',
   },
@@ -662,9 +618,8 @@ import { join } from 'node:path';
 
 const FORBIDDEN = [
   'DATACRAZY_API_TOKEN',
-  'YAYFORMS_WEBHOOK_SECRET',
-  'WEBHOOK_AUTH_MODE',
-  'YAYFORMS_FIELD_MAP',
+  'TYPEFORM_WEBHOOK_SECRET',
+  'TYPEFORM_FORM_ID',
 ];
 
 const SCAN_ROOTS = ['.next/static', '.next/server/app', 'out'];
@@ -760,7 +715,9 @@ git commit -m "chore(scaffold): Next.js 16 + Tailwind v4 + shadcn v4 + Vitest + 
 git push origin main
 ```
 
-Expected: Vercel triggers a Preview deployment on push (observable at `https://vercel.com/johansabent/ticto-outlier-lp/deployments`). It will fail at runtime because env vars aren't set yet — acceptable; Task 4 fixes that.
+Expected: Vercel triggers a Preview deployment on push (observable at `https://vercel.com/johansabent/ticto-ebulicao-lp/deployments`). It will fail at runtime because env vars aren't set yet — acceptable; Task 4 fixes that.
+
+> **Note:** `@typeform/embed-react` is added as a production dependency in Task 15 (`pnpm add @typeform/embed-react@^4.0.0`) — not listed here to keep the scaffold minimal.
 
 ---
 
@@ -771,7 +728,7 @@ Expected: Vercel triggers a Preview deployment on push (observable at `https://v
 - Modify: none
 - Test: none (env values are not in git; validation happens in Task 5)
 
-**Dependencies:** Task 1 (`WEBHOOK_AUTH_MODE` + `YAYFORMS_WEBHOOK_SECRET` depend on the spike), Task 3 (project exists).
+**Dependencies:** Task 1 (`TYPEFORM_WEBHOOK_SECRET` + `TYPEFORM_FORM_ID` confirmed by spike), Task 3 (project exists).
 
 - [ ] **Step 1: Draft `.env.example` with every required variable**
 
@@ -784,44 +741,33 @@ Create `.env.example`:
 DATACRAZY_API_TOKEN=
 
 # ---------------------------------------------------------------------------
-# YayForms field-ID registry (server-only).
-# Map of semantic name → field_id emitted by YayForms V2 webhook. Populate after
-# creating the form in Task 1 (Day-0 spike). Shape: compact JSON.
-#
-# Example (replace IDs with real values from the YayForms field editor):
-#   {"nome":"abc123","email":"def456","telefone":"ghi789",
-#    "utm_source":"...","utm_medium":"...","utm_campaign":"...",
-#    "utm_content":"...","utm_term":"...","sck":"...","src":"..."}
+# Typeform webhook secret (server-only).
+# Set in Typeform → Connect → Webhooks → Edit → Secret.
+# Rotate before production deploy (spike used "***REDACTED-SECRET***").
 # ---------------------------------------------------------------------------
-YAYFORMS_FIELD_MAP=
+TYPEFORM_WEBHOOK_SECRET=
 
 # ---------------------------------------------------------------------------
-# Webhook auth — mode is decided by the day-0 spike.
-#  - hmac          → HMAC SHA256 header validated against raw body
-#  - shared_secret → fixed header value comparison
-#  - secret_path   → secret embedded in URL path /api/lead/<token>
+# Typeform form ID (server-only — used to validate incoming webhook form_id).
+# From the ADR: FbFMsO5x
 # ---------------------------------------------------------------------------
-WEBHOOK_AUTH_MODE=hmac
-
-# Secret value for the mode above (server-only, never prefixed with NEXT_PUBLIC).
-YAYFORMS_WEBHOOK_SECRET=
-
-# ---------------------------------------------------------------------------
-# YayForms embed client-side parameters (safe to expose).
-# Both come from the Share > Embed panel after the form is created.
-# ---------------------------------------------------------------------------
-NEXT_PUBLIC_YAYFORMS_FORM_ID=
-NEXT_PUBLIC_YAYFORMS_SCRIPT_URL=
+TYPEFORM_FORM_ID=FbFMsO5x
 
 # ---------------------------------------------------------------------------
 # Public base URL used in OG metadata and canonical links.
 # ---------------------------------------------------------------------------
-NEXT_PUBLIC_SITE_URL=https://ticto-outlier-lp.vercel.app
+NEXT_PUBLIC_SITE_URL=https://ticto-ebulicao-lp.vercel.app
+
+# ---------------------------------------------------------------------------
+# Typeform form ID exposed to client for the embed widget.
+# Same value as TYPEFORM_FORM_ID — intentionally public.
+# ---------------------------------------------------------------------------
+NEXT_PUBLIC_TYPEFORM_FORM_ID=FbFMsO5x
 ```
 
 - [ ] **Step 2: Populate local `.env.local` for dev**
 
-Copy the template and fill with real values from Task 1 (field IDs) and Vercel Dashboard (Datacrazy token after account setup):
+Copy the template and fill with real values:
 
 ```bash
 cp .env.example .env.local
@@ -836,23 +782,17 @@ Using Vercel CLI:
 vercel env add DATACRAZY_API_TOKEN production preview
 # paste the token when prompted
 
-vercel env add YAYFORMS_FIELD_MAP production preview
-# paste the compact JSON from Task 1
+vercel env add TYPEFORM_WEBHOOK_SECRET production preview
+# paste the production secret (rotate from the spike value)
 
-vercel env add WEBHOOK_AUTH_MODE production preview
-# paste the mode decided in Task 1 ADR
-
-vercel env add YAYFORMS_WEBHOOK_SECRET production preview
-# paste the secret value
-
-vercel env add NEXT_PUBLIC_YAYFORMS_FORM_ID production preview
-# paste form ID from YayForms embed snippet
-
-vercel env add NEXT_PUBLIC_YAYFORMS_SCRIPT_URL production preview
-# paste the script URL from YayForms embed snippet (e.g. https://embed.yayforms.com/init.js)
+vercel env add TYPEFORM_FORM_ID production preview
+# paste: FbFMsO5x
 
 vercel env add NEXT_PUBLIC_SITE_URL production preview
-# paste https://ticto-outlier-lp.vercel.app (update after final domain is assigned)
+# paste https://ticto-ebulicao-lp.vercel.app (update after final domain is assigned)
+
+vercel env add NEXT_PUBLIC_TYPEFORM_FORM_ID production preview
+# paste: FbFMsO5x
 ```
 
 - [ ] **Step 4: Pull env back to local to confirm**
@@ -862,7 +802,7 @@ vercel env pull .env.local
 cat .env.local | grep -c '^[A-Z]'
 ```
 
-Expected count: `7` lines starting with an uppercase env var name.
+Expected count: `5` lines starting with an uppercase env var name.
 
 - [ ] **Step 5: Verify `.env.local` is gitignored**
 
@@ -880,7 +820,7 @@ git commit -m "chore(env): document required environment variables in .env.examp
 git push origin main
 ```
 
-**Acceptance:** `vercel env ls` shows all 7 variables in Production + Preview; `.env.local` exists and is gitignored.
+**Acceptance:** `vercel env ls` shows all 5 variables in Production + Preview; `.env.local` exists and is gitignored.
 
 ---
 
@@ -908,29 +848,12 @@ function reset() {
   for (const [k, v] of Object.entries(ORIGINAL_ENV)) process.env[k] = v;
 }
 
-function validMap() {
-  return JSON.stringify({
-    nome: 'nm',
-    email: 'em',
-    telefone: 'tl',
-    utm_source: 'us',
-    utm_medium: 'um',
-    utm_campaign: 'uc',
-    utm_content: 'uco',
-    utm_term: 'ut',
-    sck: 'sk',
-    src: 'sr',
-  });
-}
-
 function setValidEnv() {
   process.env.DATACRAZY_API_TOKEN = 'tok_live_123';
-  process.env.YAYFORMS_FIELD_MAP = validMap();
-  process.env.WEBHOOK_AUTH_MODE = 'hmac';
-  process.env.YAYFORMS_WEBHOOK_SECRET = 'whsec_abcdef';
-  process.env.NEXT_PUBLIC_YAYFORMS_FORM_ID = 'form_x';
-  process.env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL = 'https://embed.yayforms.com/init.js';
-  process.env.NEXT_PUBLIC_SITE_URL = 'https://ticto-outlier-lp.vercel.app';
+  process.env.TYPEFORM_WEBHOOK_SECRET = 'whsec_abcdef_long_enough';
+  process.env.TYPEFORM_FORM_ID = 'FbFMsO5x';
+  process.env.NEXT_PUBLIC_SITE_URL = 'https://ticto-ebulicao-lp.vercel.app';
+  process.env.NEXT_PUBLIC_TYPEFORM_FORM_ID = 'FbFMsO5x';
 }
 
 describe('lib/env', () => {
@@ -942,12 +865,12 @@ describe('lib/env', () => {
     const { getServerEnv, getClientEnv } = await import('@/lib/env');
     const srv = getServerEnv();
     expect(srv.DATACRAZY_API_TOKEN).toBe('tok_live_123');
-    expect(srv.WEBHOOK_AUTH_MODE).toBe('hmac');
-    expect(srv.YAYFORMS_FIELD_MAP.email).toBe('em');
+    expect(srv.TYPEFORM_WEBHOOK_SECRET).toBe('whsec_abcdef_long_enough');
+    expect(srv.TYPEFORM_FORM_ID).toBe('FbFMsO5x');
 
     const cli = getClientEnv();
-    expect(cli.NEXT_PUBLIC_SITE_URL).toBe('https://ticto-outlier-lp.vercel.app');
-    expect(cli.NEXT_PUBLIC_YAYFORMS_FORM_ID).toBe('form_x');
+    expect(cli.NEXT_PUBLIC_SITE_URL).toBe('https://ticto-ebulicao-lp.vercel.app');
+    expect(cli.NEXT_PUBLIC_TYPEFORM_FORM_ID).toBe('FbFMsO5x');
   });
 
   it('throws when DATACRAZY_API_TOKEN is missing', async () => {
@@ -958,27 +881,20 @@ describe('lib/env', () => {
     );
   });
 
-  it('throws when WEBHOOK_AUTH_MODE is not one of the three literals', async () => {
+  it('throws when TYPEFORM_WEBHOOK_SECRET is missing in production', async () => {
     setValidEnv();
-    process.env.WEBHOOK_AUTH_MODE = 'bearer';
+    process.env.NODE_ENV = 'production';
+    delete process.env.TYPEFORM_WEBHOOK_SECRET;
     await expect(import('@/lib/env').then((m) => m.getServerEnv())).rejects.toThrow(
-      /WEBHOOK_AUTH_MODE/,
+      /TYPEFORM_WEBHOOK_SECRET/,
     );
   });
 
-  it('throws when YAYFORMS_FIELD_MAP is not valid JSON', async () => {
+  it('throws when TYPEFORM_FORM_ID is missing', async () => {
     setValidEnv();
-    process.env.YAYFORMS_FIELD_MAP = 'not-json';
+    delete process.env.TYPEFORM_FORM_ID;
     await expect(import('@/lib/env').then((m) => m.getServerEnv())).rejects.toThrow(
-      /YAYFORMS_FIELD_MAP/,
-    );
-  });
-
-  it('throws when YAYFORMS_FIELD_MAP is missing required keys', async () => {
-    setValidEnv();
-    process.env.YAYFORMS_FIELD_MAP = JSON.stringify({ nome: 'x' });
-    await expect(import('@/lib/env').then((m) => m.getServerEnv())).rejects.toThrow(
-      /email/,
+      /TYPEFORM_FORM_ID/,
     );
   });
 
@@ -1006,56 +922,20 @@ Expected: FAIL — "Failed to resolve import @/lib/env" (module doesn't exist ye
 ```typescript
 import { z } from 'zod';
 
-const REQUIRED_FIELD_MAP_KEYS = [
-  'nome',
-  'email',
-  'telefone',
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_content',
-  'utm_term',
-  'sck',
-  'src',
-] as const;
-
-const fieldMapSchema = z
-  .string()
-  .transform((raw, ctx) => {
-    try {
-      return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'YAYFORMS_FIELD_MAP must be valid JSON',
-      });
-      return z.NEVER;
-    }
-  })
-  .pipe(
-    z
-      .record(z.string().min(1))
-      .refine(
-        (obj) => REQUIRED_FIELD_MAP_KEYS.every((k) => typeof obj[k] === 'string' && obj[k].length > 0),
-        (obj) => ({
-          message: `YAYFORMS_FIELD_MAP missing required keys: ${REQUIRED_FIELD_MAP_KEYS
-            .filter((k) => typeof obj[k] !== 'string' || obj[k].length === 0)
-            .join(', ')}`,
-        }),
-      ),
-  );
+// TYPEFORM_WEBHOOK_SECRET: required in production, optional in test/dev
+const isProduction = process.env.NODE_ENV === 'production';
 
 const serverSchema = z.object({
   DATACRAZY_API_TOKEN: z.string().min(1, 'DATACRAZY_API_TOKEN is required'),
-  YAYFORMS_FIELD_MAP: fieldMapSchema,
-  WEBHOOK_AUTH_MODE: z.enum(['hmac', 'shared_secret', 'secret_path']),
-  YAYFORMS_WEBHOOK_SECRET: z.string().min(8, 'YAYFORMS_WEBHOOK_SECRET must be at least 8 chars'),
+  TYPEFORM_WEBHOOK_SECRET: isProduction
+    ? z.string().min(16, 'TYPEFORM_WEBHOOK_SECRET must be at least 16 chars in production')
+    : z.string().min(1).optional().default('dev-placeholder-secret'),
+  TYPEFORM_FORM_ID: z.string().min(1, 'TYPEFORM_FORM_ID is required'),
 });
 
 const clientSchema = z.object({
-  NEXT_PUBLIC_YAYFORMS_FORM_ID: z.string().min(1),
-  NEXT_PUBLIC_YAYFORMS_SCRIPT_URL: z.string().url(),
-  NEXT_PUBLIC_SITE_URL: z.string().url(),
+  NEXT_PUBLIC_TYPEFORM_FORM_ID: z.string().min(1, 'NEXT_PUBLIC_TYPEFORM_FORM_ID is required'),
+  NEXT_PUBLIC_SITE_URL: z.string().url('NEXT_PUBLIC_SITE_URL must be a valid URL'),
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;
@@ -1075,8 +955,7 @@ export function getServerEnv(): ServerEnv {
 
 export function getClientEnv(): ClientEnv {
   const parsed = clientSchema.safeParse({
-    NEXT_PUBLIC_YAYFORMS_FORM_ID: process.env.NEXT_PUBLIC_YAYFORMS_FORM_ID,
-    NEXT_PUBLIC_YAYFORMS_SCRIPT_URL: process.env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL,
+    NEXT_PUBLIC_TYPEFORM_FORM_ID: process.env.NEXT_PUBLIC_TYPEFORM_FORM_ID,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
   });
   if (!parsed.success) {
@@ -1095,13 +974,13 @@ export function getClientEnv(): ClientEnv {
 ```bash
 pnpm test -- tests/unit/env.test.ts
 ```
-Expected: PASS (6 passed).
+Expected: PASS (5 passed).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/env.ts tests/unit/env.test.ts
-git commit -m "feat(env): add Zod fail-fast env validation for server and client"
+git commit -m "feat(env): add Zod fail-fast env validation for Typeform + Datacrazy env vars"
 ```
 
 ---
@@ -1147,7 +1026,7 @@ describe('lib/logger', () => {
     const evt: LeadEvent = {
       event: 'lead.received',
       request_id: 'req-1',
-      auth_mode: 'hmac',
+      auth_mode: 'hmac',   // Typeform is hmac-only
       auth_valid: true,
       timing_ms: 42,
     };
@@ -1199,7 +1078,7 @@ export type LeadEvent =
   | {
       event: 'lead.received';
       request_id: string;
-      auth_mode: 'hmac' | 'shared_secret' | 'secret_path';
+      auth_mode: 'hmac';
       auth_valid: boolean;
       timing_ms: number;
     }
@@ -1274,107 +1153,64 @@ git commit -m "feat(obs): JSON structured logger with email/phone redaction"
 
 ---
 
-### Task 7: [FEATURE] `lib/yayforms-fields.ts` — field-ID registry
+### Task 7: [FEATURE] `lib/typeform-fields.ts` — field-ref registry
 
 **Files:**
-- Create: `src/lib/yayforms-fields.ts`, `tests/unit/yayforms-fields.test.ts`
+- Create: `src/lib/typeform-fields.ts`, `tests/unit/typeform-fields.test.ts`
 - Modify: none
-- Test: `tests/unit/yayforms-fields.test.ts`
+- Test: `tests/unit/typeform-fields.test.ts`
 
-**Dependencies:** Task 5 (`getServerEnv`).
+**Dependencies:** Task 5 (env.ts in place), Task 1 (fixture committed).
+
+**Key design decision:** Typeform answers arrive as an **array** (`form_response.answers[]`). Each element has a `field.ref` (stable across form edits) and a type-dependent value key (`text`, `email`, `phone_number`, `choice`). We index by `field.ref`, never by position or `field.id`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/unit/yayforms-fields.test.ts`:
+Create `tests/unit/typeform-fields.test.ts`:
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { parseAnswers, FIELD_REFS, type TypeformAnswer } from '@/lib/typeform-fields';
+import fixture from '../fixtures/typeform-webhook.json';
 
-const ORIGINAL = { ...process.env };
-function reset() {
-  for (const k of Object.keys(process.env)) if (!(k in ORIGINAL)) delete process.env[k];
-  for (const [k, v] of Object.entries(ORIGINAL)) process.env[k] = v;
-}
-function baseEnv() {
-  process.env.DATACRAZY_API_TOKEN = 'tok';
-  process.env.WEBHOOK_AUTH_MODE = 'hmac';
-  process.env.YAYFORMS_WEBHOOK_SECRET = 'secret123';
-  process.env.NEXT_PUBLIC_YAYFORMS_FORM_ID = 'f';
-  process.env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL = 'https://embed.yayforms.com/init.js';
-  process.env.NEXT_PUBLIC_SITE_URL = 'https://example.com';
-}
-
-describe('lib/yayforms-fields', () => {
-  beforeEach(() => reset());
-  afterEach(() => reset());
-
-  it('extractNamedFields maps answer keys to semantic names', async () => {
-    baseEnv();
-    process.env.YAYFORMS_FIELD_MAP = JSON.stringify({
-      nome: 'n1',
-      email: 'e1',
-      telefone: 't1',
-      utm_source: 'us',
-      utm_medium: 'um',
-      utm_campaign: 'uc',
-      utm_content: 'uco',
-      utm_term: 'ut',
-      sck: 'sk',
-      src: 'sr',
-    });
-    const { extractNamedFields } = await import('@/lib/yayforms-fields');
-    const payload = {
-      answers: {
-        n1: { content: 'João Silva' },
-        e1: { content: 'joao@example.com' },
-        t1: { content: '+5511999998888' },
-        us: { content: 'linkedin' },
-        um: { content: 'organic' },
-        uc: { content: 'outlier2025' },
-        uco: { content: 'hero-cta' },
-        ut: { content: 'evento' },
-        sk: { content: 'abc' },
-        sr: { content: 'review' },
-      },
-    };
-    const out = extractNamedFields(payload);
-    expect(out.nome).toBe('João Silva');
-    expect(out.email).toBe('joao@example.com');
-    expect(out.telefone).toBe('+5511999998888');
-    expect(out.utm_source).toBe('linkedin');
-    expect(out.sck).toBe('abc');
-    expect(out.src).toBe('review');
+describe('lib/typeform-fields', () => {
+  it('FIELD_REFS defines the 5 required fields with correct types', () => {
+    expect(FIELD_REFS.nome.type).toBe('text');
+    expect(FIELD_REFS.cpf.type).toBe('text');
+    expect(FIELD_REFS.email.type).toBe('email');
+    expect(FIELD_REFS.telefone.type).toBe('phone_number');
+    expect(FIELD_REFS.sells_online.type).toBe('choice');
+    expect(FIELD_REFS.nome.required).toBe(true);
   });
 
-  it('returns undefined for fields not present in the payload (but still validates map completeness)', async () => {
-    baseEnv();
-    process.env.YAYFORMS_FIELD_MAP = JSON.stringify({
-      nome: 'n',
-      email: 'e',
-      telefone: 't',
-      utm_source: 'us',
-      utm_medium: 'um',
-      utm_campaign: 'uc',
-      utm_content: 'uco',
-      utm_term: 'ut',
-      sck: 'sk',
-      src: 'sr',
-    });
-    const { extractNamedFields } = await import('@/lib/yayforms-fields');
-    const out = extractNamedFields({ answers: { n: { content: 'x' }, e: { content: 'e@x' }, t: { content: '1' } } });
-    expect(out.nome).toBe('x');
-    expect(out.utm_source).toBeUndefined();
+  it('parseAnswers extracts all 5 fields from the canonical fixture', () => {
+    const answers = fixture.form_response.answers as TypeformAnswer[];
+    const out = parseAnswers(answers);
+    expect(out.nome).toBe('Teste QA');
+    expect(out.cpf).toBe('12345678900');
+    expect(out.email).toBe('teste@example.com');
+    expect(out.telefone).toBe('+5511900000000');
+    expect(out.sells_online).toBe('Sim');
   });
 
-  it('throws when the answers property is missing or not an object', async () => {
-    baseEnv();
-    process.env.YAYFORMS_FIELD_MAP = JSON.stringify({
-      nome: 'n', email: 'e', telefone: 't',
-      utm_source: 'us', utm_medium: 'um', utm_campaign: 'uc',
-      utm_content: 'uco', utm_term: 'ut', sck: 'sk', src: 'sr',
-    });
-    const { extractNamedFields } = await import('@/lib/yayforms-fields');
-    expect(() => extractNamedFields({} as never)).toThrow(/answers/);
-    expect(() => extractNamedFields({ answers: 'foo' } as never)).toThrow(/answers/);
+  it('parseAnswers extracts choice by label, not by choice.ref', () => {
+    const answers: TypeformAnswer[] = [
+      { type: 'choice', choice: { label: 'Não', ref: 'some-uuid' }, field: { ref: 'sells_online', type: 'multiple_choice' } },
+    ];
+    const out = parseAnswers(answers);
+    expect(out.sells_online).toBe('Não');
+  });
+
+  it('parseAnswers throws when a required field is missing', () => {
+    // Drop 'email' from answers
+    const answers = fixture.form_response.answers.filter(
+      (a: TypeformAnswer) => a.field.ref !== 'email',
+    ) as TypeformAnswer[];
+    expect(() => parseAnswers(answers)).toThrow(/email/);
+  });
+
+  it('parseAnswers throws when answers is not an array', () => {
+    expect(() => parseAnswers(null as never)).toThrow();
+    expect(() => parseAnswers({} as never)).toThrow();
   });
 });
 ```
@@ -1382,210 +1218,218 @@ describe('lib/yayforms-fields', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-pnpm test -- tests/unit/yayforms-fields.test.ts
+pnpm test -- tests/unit/typeform-fields.test.ts
 ```
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `src/lib/yayforms-fields.ts`**
+- [ ] **Step 3: Implement `src/lib/typeform-fields.ts`**
 
 ```typescript
-import { getServerEnv } from '@/lib/env';
+// Field ref registry — keyed by stable ref, not by Typeform field ID (which can change)
+export const FIELD_REFS = {
+  nome:         { type: 'text' as const,         required: true },
+  cpf:          { type: 'text' as const,         required: true },
+  email:        { type: 'email' as const,        required: true },
+  telefone:     { type: 'phone_number' as const, required: true },
+  sells_online: { type: 'choice' as const,       required: true },
+} as const;
 
-export const FIELD_KEYS = [
-  'nome',
-  'email',
-  'telefone',
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_content',
-  'utm_term',
-  'sck',
-  'src',
-] as const;
+export type TypeformAnswer = {
+  type: 'text' | 'email' | 'phone_number' | 'choice';
+  field: { ref: string; type: string; id?: string };
+  text?: string;
+  email?: string;
+  phone_number?: string;
+  choice?: { label: string; ref: string };
+};
 
-export type FieldKey = (typeof FIELD_KEYS)[number];
+export type AnswerByRef = {
+  nome: string;
+  cpf: string;
+  email: string;
+  telefone: string;
+  sells_online: string; // choice.label (human-readable)
+};
 
-export type NamedFields = Partial<Record<FieldKey, string>>;
-
-type AnswerCell = { content?: unknown };
-
-export interface YayFormsWebhookPayload {
-  submission_id?: string;
-  form_id?: string;
-  answers: Record<string, AnswerCell>;
-  [k: string]: unknown;
+function extractValue(answer: TypeformAnswer): string | undefined {
+  switch (answer.type) {
+    case 'text':         return answer.text;
+    case 'email':        return answer.email;
+    case 'phone_number': return answer.phone_number;
+    case 'choice':       return answer.choice?.label;
+    default:             return undefined;
+  }
 }
 
-export function extractNamedFields(payload: YayFormsWebhookPayload): NamedFields {
-  if (!payload || typeof payload !== 'object' || payload === null) {
-    throw new TypeError('YayForms payload is not an object');
+export function parseAnswers(answers: TypeformAnswer[]): AnswerByRef {
+  if (!Array.isArray(answers)) {
+    throw new TypeError('Typeform answers must be an array');
   }
-  if (typeof payload.answers !== 'object' || payload.answers === null || Array.isArray(payload.answers)) {
-    throw new TypeError('YayForms payload.answers is missing or not an object');
+
+  // Index answers by field.ref
+  const byRef = new Map<string, TypeformAnswer>();
+  for (const a of answers) {
+    byRef.set(a.field.ref, a);
   }
-  const map = getServerEnv().YAYFORMS_FIELD_MAP as Record<FieldKey, string>;
-  const out: NamedFields = {};
-  for (const key of FIELD_KEYS) {
-    const fieldId = map[key];
-    const cell = payload.answers[fieldId];
-    if (cell && typeof cell.content === 'string' && cell.content.length > 0) {
-      out[key] = cell.content;
+
+  const result: Partial<AnswerByRef> = {};
+  for (const [ref, meta] of Object.entries(FIELD_REFS)) {
+    const answer = byRef.get(ref);
+    if (!answer) {
+      if (meta.required) {
+        throw new Error(`Missing required Typeform field: ${ref}`);
+      }
+      continue;
+    }
+    const value = extractValue(answer);
+    if (!value && meta.required) {
+      throw new Error(`Empty value for required Typeform field: ${ref} (type: ${answer.type})`);
+    }
+    if (value) {
+      (result as Record<string, string>)[ref] = value;
     }
   }
-  return out;
+
+  return result as AnswerByRef;
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-pnpm test -- tests/unit/yayforms-fields.test.ts
+pnpm test -- tests/unit/typeform-fields.test.ts
 ```
-Expected: PASS (3 passed).
+Expected: PASS (5 passed).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/yayforms-fields.ts tests/unit/yayforms-fields.test.ts
-git commit -m "feat(webhook): field-ID registry extracting semantic names from YayForms V2 payload"
+git add src/lib/typeform-fields.ts tests/unit/typeform-fields.test.ts
+git commit -m "feat(webhook): Typeform field-ref registry with parseAnswers (array-indexed by ref)"
 ```
 
 ---
 
-### Task 8: [FEATURE] `lib/webhook-auth.ts` — multi-mode validator (agent:review-required)
+### Task 8: [FEATURE] `lib/webhook-auth.ts` — HMAC-only Typeform validator (agent:review-required)
 
 **Files:**
 - Create: `src/lib/webhook-auth.ts`, `tests/unit/webhook-auth.test.ts`
 - Modify: none
 - Test: `tests/unit/webhook-auth.test.ts`
 
-**Dependencies:** Task 1 (ADR dictates which branch is the primary path), Task 5.
+**Dependencies:** Task 1 (ADR + fixture committed), Task 5.
 
-**Review gate:** Before starting this task, re-read `docs/decisions/2026-04-15-webhook-auth.md`. The ADR may override the signature header name, payload formula, or encoding. The test + implementation below cover all three modes; the ADR decides which one runs in production via `WEBHOOK_AUTH_MODE`. If the ADR says the HMAC payload is `timestamp + "." + body`, adjust the constant `HMAC_PAYLOAD_TEMPLATE` in the test and implementation and document the choice in a code comment.
+**Review gate:** Before starting this task, re-read `docs/decisions/2026-04-16-typeform-webhook-auth.md`. Key implementation details:
+- Header: `typeform-signature` (case-insensitive)
+- Format: `sha256=<base64>` — strip `sha256=` prefix, then `Buffer.from(value, 'base64')`
+- Encoding: **base64** (not hex)
+- HMAC: `createHmac('sha256', secret).update(rawBodyBuffer).digest('base64')`
+- Replay window: reject if `form_response.submitted_at` missing / unparseable / outside ±5 minutes
+- No `WEBHOOK_AUTH_MODE` switching — single function `verifyTypeformSignature()`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/unit/webhook-auth.test.ts`:
 ```typescript
 import { describe, it, expect } from 'vitest';
-import crypto from 'node:crypto';
-import { validateWebhook } from '@/lib/webhook-auth';
+import { createHmac } from 'node:crypto';
+import { verifyTypeformSignature } from '@/lib/webhook-auth';
+import fixtureRaw from '../fixtures/typeform-webhook.json';
 
-const SECRET = 'whsec_test_12345';
+const SECRET = '***REDACTED-SECRET***';
 
-function sign(body: string): string {
-  return crypto.createHmac('sha256', SECRET).update(body).digest('hex');
+// Compute expected signature the same way Typeform does
+function makeSignature(body: string, secret: string): string {
+  return 'sha256=' + createHmac('sha256', secret).update(Buffer.from(body)).digest('base64');
 }
 
-describe('lib/webhook-auth — hmac mode', () => {
-  it('accepts a valid signature', () => {
-    const body = '{"answers":{}}';
-    const sig = sign(body);
-    const res = validateWebhook({
-      mode: 'hmac',
-      secret: SECRET,
-      rawBody: body,
-      headers: new Headers({ 'x-yayforms-signature': sig }),
-      url: new URL('https://ex.com/api/lead'),
-    });
-    expect(res.valid).toBe(true);
-  });
+const FIXTURE_BODY = JSON.stringify(fixtureRaw);
+const VALID_SIG = makeSignature(FIXTURE_BODY, SECRET);
 
-  it('rejects a tampered signature', () => {
-    const body = '{"answers":{}}';
-    const sig = sign(body).replace(/.$/, '0');
-    const res = validateWebhook({
-      mode: 'hmac',
+// submitted_at from fixture: 2026-04-16T21:00:39Z — fake "now" close to it for replay tests
+const FIXTURE_NOW = new Date('2026-04-16T21:02:00Z'); // 81 seconds after submission — within 5 min
+
+describe('lib/webhook-auth — verifyTypeformSignature', () => {
+  it('accepts a valid Typeform signature and fresh timestamp', () => {
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: VALID_SIG,
       secret: SECRET,
-      rawBody: body,
-      headers: new Headers({ 'x-yayforms-signature': sig }),
-      url: new URL('https://ex.com/api/lead'),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(false);
-    expect(res.reason).toBe('hmac_mismatch');
+    expect(result.valid).toBe(true);
   });
 
   it('rejects when signature header is missing', () => {
-    const res = validateWebhook({
-      mode: 'hmac',
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: null,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({}),
-      url: new URL('https://ex.com/api/lead'),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(false);
-    expect(res.reason).toBe('hmac_missing');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('hmac_missing');
   });
 
-  it('rejects when lengths differ (does not throw from timingSafeEqual)', () => {
-    const res = validateWebhook({
-      mode: 'hmac',
+  it('rejects a tampered body', () => {
+    const tampered = FIXTURE_BODY.replace('Teste QA', 'Hacker');
+    const result = verifyTypeformSignature({
+      rawBody: tampered,
+      signatureHeader: VALID_SIG,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({ 'x-yayforms-signature': 'short' }),
-      url: new URL('https://ex.com/api/lead'),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(false);
-    expect(res.reason).toBe('hmac_length_mismatch');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('hmac_mismatch');
   });
-});
 
-describe('lib/webhook-auth — shared_secret mode', () => {
-  it('accepts when X-Webhook-Secret matches', () => {
-    const res = validateWebhook({
-      mode: 'shared_secret',
+  it('rejects when sha256= prefix is missing', () => {
+    const badSig = VALID_SIG.replace('sha256=', '');
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: badSig,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({ 'x-webhook-secret': SECRET }),
-      url: new URL('https://ex.com/api/lead'),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('hmac_bad_format');
   });
-  it('rejects when X-Webhook-Secret is missing or different', () => {
-    const r1 = validateWebhook({
-      mode: 'shared_secret',
-      secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({}),
-      url: new URL('https://ex.com/api/lead'),
-    });
-    expect(r1.valid).toBe(false);
-    expect(r1.reason).toBe('shared_secret_missing');
 
-    const r2 = validateWebhook({
-      mode: 'shared_secret',
+  it('rejects when submitted_at is older than 5 minutes', () => {
+    const staleNow = new Date('2026-04-16T21:10:00Z'); // 9+ minutes after submission
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: VALID_SIG,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({ 'x-webhook-secret': 'wrong' }),
-      url: new URL('https://ex.com/api/lead'),
+      now: staleNow,
     });
-    expect(r2.valid).toBe(false);
-    expect(r2.reason).toBe('shared_secret_mismatch');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('replay_window_exceeded');
   });
-});
 
-describe('lib/webhook-auth — secret_path mode', () => {
-  it('accepts when URL path segment equals secret', () => {
-    const res = validateWebhook({
-      mode: 'secret_path',
+  it('rejects when form_response.submitted_at is missing', () => {
+    const bodyNoTs = JSON.stringify({ form_response: {} });
+    const sig = makeSignature(bodyNoTs, SECRET);
+    const result = verifyTypeformSignature({
+      rawBody: bodyNoTs,
+      signatureHeader: sig,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({}),
-      url: new URL(`https://ex.com/api/lead/${SECRET}`),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('replay_window_exceeded');
   });
-  it('rejects when path segment differs', () => {
-    const res = validateWebhook({
-      mode: 'secret_path',
+
+  it('rejects when lengths differ (avoids timingSafeEqual throw)', () => {
+    const shortSig = 'sha256=abc';
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: shortSig,
       secret: SECRET,
-      rawBody: '{}',
-      headers: new Headers({}),
-      url: new URL('https://ex.com/api/lead/wrong'),
+      now: FIXTURE_NOW,
     });
-    expect(res.valid).toBe(false);
-    expect(res.reason).toBe('secret_path_mismatch');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('hmac_length_mismatch');
   });
 });
 ```
@@ -1600,85 +1444,67 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `src/lib/webhook-auth.ts`**
 
 ```typescript
-import crypto from 'node:crypto';
-
-export type AuthMode = 'hmac' | 'shared_secret' | 'secret_path';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export type ValidationFailure =
   | 'hmac_missing'
+  | 'hmac_bad_format'
   | 'hmac_length_mismatch'
   | 'hmac_mismatch'
-  | 'shared_secret_missing'
-  | 'shared_secret_mismatch'
-  | 'secret_path_mismatch';
+  | 'replay_window_exceeded';
 
 export type ValidationResult = { valid: true } | { valid: false; reason: ValidationFailure };
 
-export interface ValidateInput {
-  mode: AuthMode;
-  secret: string;
+export interface VerifyTypeformInput {
   rawBody: string;
-  headers: Headers;
-  url: URL;
+  signatureHeader: string | null;
+  secret: string;
+  /** Injectable for tests; defaults to Date.now() */
+  now?: Date;
 }
 
-const SIGNATURE_HEADER = 'x-yayforms-signature';
-const SHARED_SECRET_HEADER = 'x-webhook-secret';
+const SIGNATURE_HEADER_PREFIX = 'sha256=';
+const REPLAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
-function validateHmac(rawBody: string, secret: string, headers: Headers): ValidationResult {
-  const provided = headers.get(SIGNATURE_HEADER);
-  if (!provided) return { valid: false, reason: 'hmac_missing' };
+export function verifyTypeformSignature(input: VerifyTypeformInput): ValidationResult {
+  const { rawBody, signatureHeader, secret, now = new Date() } = input;
 
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  if (provided.length !== expected.length) {
+  // 1. Header presence
+  if (!signatureHeader) return { valid: false, reason: 'hmac_missing' };
+
+  // 2. Format: must start with 'sha256='
+  if (!signatureHeader.startsWith(SIGNATURE_HEADER_PREFIX)) {
+    return { valid: false, reason: 'hmac_bad_format' };
+  }
+
+  // 3. Replay window — check submitted_at before HMAC (fail fast on obvious replays)
+  let submittedAt: Date | null = null;
+  try {
+    const parsed = JSON.parse(rawBody) as { form_response?: { submitted_at?: string } };
+    const ts = parsed?.form_response?.submitted_at;
+    if (ts) submittedAt = new Date(ts);
+  } catch {
+    // body not parseable yet — HMAC will fail anyway
+  }
+  if (!submittedAt || isNaN(submittedAt.getTime())) {
+    return { valid: false, reason: 'replay_window_exceeded' };
+  }
+  if (Math.abs(now.getTime() - submittedAt.getTime()) > REPLAY_WINDOW_MS) {
+    return { valid: false, reason: 'replay_window_exceeded' };
+  }
+
+  // 4. HMAC comparison (base64, not hex — Typeform uses base64)
+  const expected = 'sha256=' + createHmac('sha256', secret).update(Buffer.from(rawBody)).digest('base64');
+  const providedBuf = Buffer.from(signatureHeader);
+  const expectedBuf = Buffer.from(expected);
+
+  if (providedBuf.length !== expectedBuf.length) {
     return { valid: false, reason: 'hmac_length_mismatch' };
   }
 
-  let a: Buffer;
-  let b: Buffer;
-  try {
-    a = Buffer.from(provided, 'hex');
-    b = Buffer.from(expected, 'hex');
-  } catch {
-    return { valid: false, reason: 'hmac_mismatch' };
-  }
-  if (a.length !== b.length) return { valid: false, reason: 'hmac_length_mismatch' };
-  return crypto.timingSafeEqual(a, b)
+  return timingSafeEqual(providedBuf, expectedBuf)
     ? { valid: true }
     : { valid: false, reason: 'hmac_mismatch' };
-}
-
-function validateSharedSecret(secret: string, headers: Headers): ValidationResult {
-  const provided = headers.get(SHARED_SECRET_HEADER);
-  if (!provided) return { valid: false, reason: 'shared_secret_missing' };
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length) return { valid: false, reason: 'shared_secret_mismatch' };
-  return crypto.timingSafeEqual(a, b)
-    ? { valid: true }
-    : { valid: false, reason: 'shared_secret_mismatch' };
-}
-
-function validateSecretPath(secret: string, url: URL): ValidationResult {
-  const segments = url.pathname.split('/').filter(Boolean);
-  const last = segments.at(-1) ?? '';
-  const a = Buffer.from(last);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length) return { valid: false, reason: 'secret_path_mismatch' };
-  return crypto.timingSafeEqual(a, b)
-    ? { valid: true }
-    : { valid: false, reason: 'secret_path_mismatch' };
-}
-
-export function validateWebhook(input: ValidateInput): ValidationResult {
-  switch (input.mode) {
-    case 'hmac':
-      return validateHmac(input.rawBody, input.secret, input.headers);
-    case 'shared_secret':
-      return validateSharedSecret(input.secret, input.headers);
-    case 'secret_path':
-      return validateSecretPath(input.secret, input.url);
-  }
 }
 ```
 
@@ -1687,13 +1513,13 @@ export function validateWebhook(input: ValidateInput): ValidationResult {
 ```bash
 pnpm test -- tests/unit/webhook-auth.test.ts
 ```
-Expected: PASS (8 passed).
+Expected: PASS (7 passed).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/webhook-auth.ts tests/unit/webhook-auth.test.ts
-git commit -m "feat(webhook): multi-mode auth validator (hmac / shared_secret / secret_path)"
+git commit -m "feat(webhook): Typeform HMAC-only validator (sha256=base64, 5-min replay window)"
 ```
 
 ---
@@ -1705,76 +1531,94 @@ git commit -m "feat(webhook): multi-mode auth validator (hmac / shared_secret / 
 - Modify: none
 - Test: `tests/unit/utm-mapping.test.ts`
 
-**Dependencies:** Task 7 (`NamedFields`).
+**Dependencies:** Task 7 (`AnswerByRef` from typeform-fields).
+
+**Key design decision:** Typeform UTMs live in `form_response.hidden` — a single flat object. This is simpler than the YayForms split. Extract all 7 keys from `hidden`, build 3-layer Datacrazy mapping. **No `tags` field** — Datacrazy `tags` is a rejected decision; all UTM data goes into `source`, `sourceReferral.sourceUrl`, and `notes` JSON.
 
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/unit/utm-mapping.test.ts`:
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { mapToDatacrazy } from '@/lib/utm-mapping';
+import { mapUtms, buildDatacrazyPayload } from '@/lib/utm-mapping';
+import fixture from '../fixtures/typeform-webhook.json';
 
-describe('lib/utm-mapping', () => {
-  it('builds a Datacrazy payload with 3-layer UTM mapping from a complete NamedFields input', () => {
-    const fields = {
-      nome: 'João Silva',
-      email: 'joao@example.com',
-      telefone: '+5511999998888',
-      utm_source: 'linkedin',
-      utm_medium: 'organic',
-      utm_campaign: 'outlier2025',
-      utm_content: 'hero-cta',
-      utm_term: 'evento-presencial',
-      sck: 'abc123',
-      src: 'review',
-    } as const;
-    const landingUrl = 'https://ticto-outlier-lp.vercel.app/?utm_source=linkedin&utm_medium=organic&utm_campaign=outlier2025&utm_content=hero-cta&utm_term=evento-presencial&sck=abc123&src=review';
+describe('lib/utm-mapping — mapUtms', () => {
+  it('extracts all 7 UTM keys from form_response.hidden', () => {
+    const utms = mapUtms(fixture.form_response.hidden);
+    expect(utms.utm_source).toBe('google');
+    expect(utms.utm_medium).toBe('cpc');
+    expect(utms.utm_campaign).toBe('test');
+    expect(utms.utm_content).toBe('banner');
+    expect(utms.utm_term).toBe('ai');
+    expect(utms.sck).toBe('testclick');
+    expect(utms.src).toBe('lp');
+  });
 
-    const out = mapToDatacrazy(fields, { landingUrl, capturedAt: '2026-04-15T12:00:00Z' });
+  it('returns null for missing keys', () => {
+    const utms = mapUtms({});
+    expect(utms.utm_source).toBeNull();
+    expect(utms.sck).toBeNull();
+  });
 
+  it('handles missing hidden object gracefully', () => {
+    const utms = mapUtms(undefined);
+    expect(utms.utm_source).toBeNull();
+  });
+});
+
+describe('lib/utm-mapping — buildDatacrazyPayload', () => {
+  const answers = {
+    nome: 'João Silva',
+    cpf: '12345678900',
+    email: 'joao@example.com',
+    telefone: '+5511999998888',
+    sells_online: 'Sim',
+  };
+  const utms = {
+    utm_source: 'linkedin',
+    utm_medium: 'organic',
+    utm_campaign: 'ebulicao2026',
+    utm_content: 'hero-cta',
+    utm_term: 'evento',
+    sck: 'abc123',
+    src: 'review',
+  };
+  const landingUrl = 'https://ticto-ebulicao-lp.vercel.app/?utm_source=linkedin&sck=abc123';
+
+  it('maps to 3-layer Datacrazy payload', () => {
+    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:39Z' });
     expect(out.name).toBe('João Silva');
     expect(out.email).toBe('joao@example.com');
     expect(out.phone).toBe('+5511999998888');
     expect(out.source).toBe('linkedin');
     expect(out.sourceReferral.sourceUrl).toBe(landingUrl);
-
     const notes = JSON.parse(out.notes);
     expect(notes.utm_source).toBe('linkedin');
-    expect(notes.utm_medium).toBe('organic');
-    expect(notes.utm_campaign).toBe('outlier2025');
-    expect(notes.utm_content).toBe('hero-cta');
-    expect(notes.utm_term).toBe('evento-presencial');
     expect(notes.sck).toBe('abc123');
     expect(notes.src).toBe('review');
     expect(notes.landing_page).toBe(landingUrl);
-    expect(notes.captured_at).toBe('2026-04-15T12:00:00Z');
+    expect(notes.captured_at).toBe('2026-04-16T21:00:39Z');
   });
 
-  it('omits absent UTM keys from notes and falls back source to "direct" when utm_source missing', () => {
-    const out = mapToDatacrazy(
-      { nome: 'A', email: 'a@b.co', telefone: '+5511988887777' },
-      { landingUrl: 'https://ex.com/', capturedAt: '2026-04-15T13:00:00Z' },
-    );
+  it('falls back source to "direct" when utm_source is null', () => {
+    const out = buildDatacrazyPayload({
+      answers,
+      utms: { ...utms, utm_source: null },
+      landingUrl: 'https://ex.com/',
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
     expect(out.source).toBe('direct');
-    const notes = JSON.parse(out.notes);
-    expect(notes.utm_source).toBeUndefined();
-    expect(notes.sck).toBeUndefined();
   });
 
-  it('does not include a sourceReferral.sourceId even when utm_campaign is present', () => {
-    const out = mapToDatacrazy(
-      { nome: 'A', email: 'a@b.co', telefone: '+5511988887777', utm_campaign: 'x' },
-      { landingUrl: 'https://ex.com/', capturedAt: '2026-04-15T13:00:00Z' },
-    );
-    expect((out.sourceReferral as Record<string, unknown>).sourceId).toBeUndefined();
-  });
-
-  it('does not emit a tags array (3-layer mapping, no tags)', () => {
-    const out = mapToDatacrazy(
-      { nome: 'A', email: 'a@b.co', telefone: '+5511988887777', sck: 'x' },
-      { landingUrl: 'https://ex.com/', capturedAt: '2026-04-15T13:00:00Z' },
-    );
+  it('does not emit a tags field (3-layer mapping only)', () => {
+    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
     expect((out as { tags?: unknown }).tags).toBeUndefined();
+  });
+
+  it('does not emit sourceReferral.sourceId', () => {
+    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
+    expect((out.sourceReferral as Record<string, unknown>).sourceId).toBeUndefined();
   });
 });
 ```
@@ -1789,7 +1633,17 @@ Expected: FAIL — module not found.
 - [ ] **Step 3: Implement `src/lib/utm-mapping.ts`**
 
 ```typescript
-import type { NamedFields } from '@/lib/yayforms-fields';
+import type { AnswerByRef } from '@/lib/typeform-fields';
+
+export interface UtmValues {
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  sck: string | null;
+  src: string | null;
+}
 
 export interface DatacrazyLeadPayload {
   name: string;
@@ -1800,37 +1654,44 @@ export interface DatacrazyLeadPayload {
   notes: string;
 }
 
-export interface MapContext {
-  landingUrl: string;
-  capturedAt: string;
+// Simpler than YayForms — UTMs live in one flat object (form_response.hidden)
+export function mapUtms(hidden: Record<string, string> | undefined | null): UtmValues {
+  const h = hidden ?? {};
+  return {
+    utm_source:   h.utm_source   ?? null,
+    utm_medium:   h.utm_medium   ?? null,
+    utm_campaign: h.utm_campaign ?? null,
+    utm_content:  h.utm_content  ?? null,
+    utm_term:     h.utm_term     ?? null,
+    sck:          h.sck          ?? null,
+    src:          h.src          ?? null,
+  };
 }
 
-const UTM_KEYS = [
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_content',
-  'utm_term',
-  'sck',
-  'src',
-] as const;
+export function buildDatacrazyPayload(ctx: {
+  answers: AnswerByRef;
+  utms: UtmValues;
+  landingUrl: string;
+  capturedAt: string;
+}): DatacrazyLeadPayload {
+  const { answers, utms, landingUrl, capturedAt } = ctx;
 
-export function mapToDatacrazy(fields: NamedFields, ctx: MapContext): DatacrazyLeadPayload {
+  // notes-JSON: all 7 UTM values (omit nulls) + metadata
   const notesObj: Record<string, string> = {};
-  for (const k of UTM_KEYS) {
-    const v = fields[k];
-    if (typeof v === 'string' && v.length > 0) notesObj[k] = v;
+  for (const [k, v] of Object.entries(utms)) {
+    if (v !== null) notesObj[k] = v;
   }
-  notesObj.landing_page = ctx.landingUrl;
-  notesObj.captured_at = ctx.capturedAt;
+  notesObj.landing_page = landingUrl;
+  notesObj.captured_at = capturedAt;
 
   return {
-    name: fields.nome ?? '',
-    email: fields.email ?? '',
-    phone: fields.telefone ?? '',
-    source: fields.utm_source ?? 'direct',
-    sourceReferral: { sourceUrl: ctx.landingUrl },
+    name: answers.nome,
+    email: answers.email,
+    phone: answers.telefone,
+    source: utms.utm_source ?? 'direct',
+    sourceReferral: { sourceUrl: landingUrl },
     notes: JSON.stringify(notesObj),
+    // No tags — Datacrazy tags is a rejected decision (spec explicitly rejected it)
   };
 }
 ```
@@ -1840,13 +1701,13 @@ export function mapToDatacrazy(fields: NamedFields, ctx: MapContext): DatacrazyL
 ```bash
 pnpm test -- tests/unit/utm-mapping.test.ts
 ```
-Expected: PASS (4 passed).
+Expected: PASS (7 passed).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/utm-mapping.ts tests/unit/utm-mapping.test.ts
-git commit -m "feat(crm): 3-layer UTM → Datacrazy mapping (source / sourceUrl / notes-JSON)"
+git commit -m "feat(crm): Typeform UTM extraction + 3-layer Datacrazy mapping (source/sourceUrl/notes-JSON)"
 ```
 
 ---
@@ -1871,15 +1732,9 @@ const ORIGINAL_ENV = { ...process.env };
 
 function setEnv() {
   process.env.DATACRAZY_API_TOKEN = 'tok_live_abc';
-  process.env.YAYFORMS_FIELD_MAP = JSON.stringify({
-    nome: 'n', email: 'e', telefone: 't',
-    utm_source: 'us', utm_medium: 'um', utm_campaign: 'uc',
-    utm_content: 'uco', utm_term: 'ut', sck: 'sk', src: 'sr',
-  });
-  process.env.WEBHOOK_AUTH_MODE = 'hmac';
-  process.env.YAYFORMS_WEBHOOK_SECRET = 'whsec_secret_123';
-  process.env.NEXT_PUBLIC_YAYFORMS_FORM_ID = 'f';
-  process.env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL = 'https://embed.yayforms.com/init.js';
+  process.env.TYPEFORM_WEBHOOK_SECRET = 'whsec_secret_123';
+  process.env.TYPEFORM_FORM_ID = 'FbFMsO5x';
+  process.env.NEXT_PUBLIC_TYPEFORM_FORM_ID = 'FbFMsO5x';
   process.env.NEXT_PUBLIC_SITE_URL = 'https://example.com';
 }
 
@@ -2122,46 +1977,43 @@ git commit -m "feat(crm): Datacrazy fetch client with 429 retry, timeout, and ty
 
 ---
 
-### Task 11: [FEATURE] `app/api/lead/route.ts` — webhook handler wiring libs together (agent:review-required)
+### Task 11: [FEATURE] `app/api/lead/route.ts` — Typeform webhook handler (agent:review-required)
 
 **Files:**
-- Create:
-  - `src/app/api/lead/route.ts` (primary handler for `hmac` and `shared_secret` modes)
-  - `src/app/api/lead/[secret]/route.ts` (alternate handler for `secret_path` mode)
+- Create: `src/app/api/lead/route.ts` (single handler — hmac-only, no `[secret]` variant)
+- Delete: `src/app/api/lead/[secret]/route.ts` — NOT created. Typeform is hmac-only; the secret_path variant is not needed.
 - Modify: none
 - Test: none co-located; integration is exercised by E2E in Task 19. Library coverage is already complete from Tasks 6–10.
 
 **Dependencies:** Tasks 6, 7, 8, 9, 10.
 
-**Review gate:** Re-read the ADR from Task 1. Whichever mode was chosen, **only the matching file needs to exist**. Create both; leave the unused one in place — routing by mode env var keeps the codebase consistent with the ADR.
+**Review gate:** Re-read `docs/decisions/2026-04-16-typeform-webhook-auth.md`. Key handler flow:
+1. Read raw body with `await req.text()`, Buffer it for HMAC
+2. `verifyTypeformSignature(rawBody, headers.get('typeform-signature'), env.TYPEFORM_WEBHOOK_SECRET)` → 401 if fail
+3. `JSON.parse(rawBody)` → validate has `form_response`
+4. `parseAnswers(body.form_response.answers)` → extract 5 fields by ref
+5. `mapUtms(body.form_response.hidden)` → 7 UTM values
+6. `buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt })` → 3-layer Datacrazy payload
+7. `postLead(payload)` — sync, no waitUntil
+8. On success: 200 + log `lead.forwarded`; on failure: 500 + log `lead.failed`
+9. PII redaction: mask email, phone, name first-only
 
-- [ ] **Step 1: Create the primary handler `src/app/api/lead/route.ts`**
+- [ ] **Step 1: Create `src/app/api/lead/route.ts`**
 
 ```typescript
 import { NextResponse } from 'next/server';
-import { waitUntil } from '@vercel/functions';
 import { getServerEnv } from '@/lib/env';
-import { validateWebhook } from '@/lib/webhook-auth';
-import { extractNamedFields, type YayFormsWebhookPayload } from '@/lib/yayforms-fields';
-import { mapToDatacrazy } from '@/lib/utm-mapping';
+import { verifyTypeformSignature } from '@/lib/webhook-auth';
+import { parseAnswers, type TypeformAnswer } from '@/lib/typeform-fields';
+import { mapUtms, buildDatacrazyPayload } from '@/lib/utm-mapping';
 import { postLead } from '@/lib/datacrazy';
-import { logger } from '@/lib/logger';
+import { logger, redactEmail, redactPhone } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function newRequestId(): string {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function badRequest(reason: string, requestId: string) {
-  logger.error({ event: 'lead.failed', request_id: requestId, error_class: 'parse_error', error_message: reason });
-  return NextResponse.json({ error: reason }, { status: 400 });
-}
-
-function unauthorized(reason: string, requestId: string) {
-  logger.error({ event: 'lead.failed', request_id: requestId, error_class: 'auth_invalid', error_message: reason });
-  return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 }
 
 export async function POST(req: Request) {
@@ -2169,171 +2021,53 @@ export async function POST(req: Request) {
   const t0 = Date.now();
   const env = getServerEnv();
 
-  if (env.WEBHOOK_AUTH_MODE === 'secret_path') {
-    return NextResponse.json(
-      { error: 'configured for secret_path; POST to /api/lead/<secret>' },
-      { status: 404 },
-    );
-  }
-
+  // 1. Read raw body BEFORE JSON.parse — HMAC must run on exact bytes
   const rawBody = await req.text();
-  const auth = validateWebhook({
-    mode: env.WEBHOOK_AUTH_MODE,
-    secret: env.YAYFORMS_WEBHOOK_SECRET,
+
+  // 2. Verify Typeform HMAC signature
+  const sigHeader = req.headers.get('typeform-signature');
+  const authResult = verifyTypeformSignature({
     rawBody,
-    headers: req.headers,
-    url: new URL(req.url),
+    signatureHeader: sigHeader,
+    secret: env.TYPEFORM_WEBHOOK_SECRET,
   });
 
   logger.info({
     event: 'lead.received',
     request_id: requestId,
-    auth_mode: env.WEBHOOK_AUTH_MODE,
-    auth_valid: auth.valid,
+    auth_mode: 'hmac',
+    auth_valid: authResult.valid,
     timing_ms: Date.now() - t0,
   });
 
-  if (!auth.valid) return unauthorized(auth.reason, requestId);
-
-  let payload: YayFormsWebhookPayload;
-  try {
-    payload = JSON.parse(rawBody) as YayFormsWebhookPayload;
-  } catch {
-    return badRequest('invalid_json', requestId);
-  }
-
-  let fields;
-  try {
-    fields = extractNamedFields(payload);
-  } catch (err) {
-    return badRequest(err instanceof Error ? err.message : 'field_extraction_failed', requestId);
-  }
-
-  const utmKeysPresent = [
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'sck', 'src',
-  ].filter((k) => typeof fields[k as keyof typeof fields] === 'string');
-
-  logger.info({
-    event: 'lead.mapped',
-    request_id: requestId,
-    submission_id: payload.submission_id,
-    field_count_mapped: Object.keys(fields).length,
-    utm_keys_present: utmKeysPresent,
-  });
-
-  const landingUrl =
-    typeof (payload as { landing_url?: unknown }).landing_url === 'string'
-      ? (payload as { landing_url: string }).landing_url
-      : req.headers.get('referer') ?? env.YAYFORMS_FIELD_MAP.landing_page ?? '';
-
-  const datacrazyPayload = mapToDatacrazy(fields, {
-    landingUrl,
-    capturedAt: new Date().toISOString(),
-  });
-
-  const crmT0 = Date.now();
-  const crm = await postLead(datacrazyPayload);
-  const crmMs = Date.now() - crmT0;
-
-  if (!crm.ok) {
+  if (!authResult.valid) {
     logger.error({
       event: 'lead.failed',
       request_id: requestId,
-      submission_id: payload.submission_id,
-      error_class: crm.errorClass,
-      error_message: `datacrazy ${crm.status}: ${crm.bodySnippet}`,
+      error_class: 'auth_invalid',
+      error_message: authResult.reason,
     });
-    return NextResponse.json({ error: 'crm_failed' }, { status: 502 });
-  }
-
-  waitUntil(
-    Promise.resolve().then(() =>
-      logger.info({
-        event: 'lead.forwarded',
-        request_id: requestId,
-        submission_id: payload.submission_id,
-        datacrazy_status: crm.status,
-        datacrazy_lead_id: crm.leadId,
-        timing_ms: crmMs,
-      }),
-    ),
-  );
-
-  return NextResponse.json({ ok: true, request_id: requestId }, { status: 200 });
-}
-
-export function GET() {
-  return NextResponse.json({ error: 'method_not_allowed' }, { status: 405 });
-}
-```
-
-> Note on `landingUrl`: the cleanest source is a YayForms-provided `landing_url` field in the payload body (YayForms V2 emits the submission context when the form is embedded via `data-yf-transitive-search-params`). If that field is missing, fall back to `Referer`. The logic is kept in the handler because it is integration-layer, not a pure library concern.
-
-- [ ] **Step 2: Create the alternate handler `src/app/api/lead/[secret]/route.ts`**
-
-```typescript
-import { NextResponse } from 'next/server';
-import { waitUntil } from '@vercel/functions';
-import { getServerEnv } from '@/lib/env';
-import { validateWebhook } from '@/lib/webhook-auth';
-import { extractNamedFields, type YayFormsWebhookPayload } from '@/lib/yayforms-fields';
-import { mapToDatacrazy } from '@/lib/utm-mapping';
-import { postLead } from '@/lib/datacrazy';
-import { logger } from '@/lib/logger';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-function newRequestId(): string {
-  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export async function POST(req: Request, { params }: { params: Promise<{ secret: string }> }) {
-  const requestId = newRequestId();
-  const t0 = Date.now();
-  const env = getServerEnv();
-
-  if (env.WEBHOOK_AUTH_MODE !== 'secret_path') {
-    return NextResponse.json(
-      { error: 'configured for header auth; POST to /api/lead' },
-      { status: 404 },
-    );
-  }
-
-  await params;
-  const rawBody = await req.text();
-  const auth = validateWebhook({
-    mode: 'secret_path',
-    secret: env.YAYFORMS_WEBHOOK_SECRET,
-    rawBody,
-    headers: req.headers,
-    url: new URL(req.url),
-  });
-
-  logger.info({
-    event: 'lead.received',
-    request_id: requestId,
-    auth_mode: 'secret_path',
-    auth_valid: auth.valid,
-    timing_ms: Date.now() - t0,
-  });
-
-  if (!auth.valid) {
-    logger.error({ event: 'lead.failed', request_id: requestId, error_class: 'auth_invalid', error_message: auth.reason });
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  let payload: YayFormsWebhookPayload;
+  // 3. Parse body
+  let body: { form_response?: { answers?: TypeformAnswer[]; hidden?: Record<string, string>; token?: string } };
   try {
-    payload = JSON.parse(rawBody) as YayFormsWebhookPayload;
+    body = JSON.parse(rawBody);
   } catch {
     logger.error({ event: 'lead.failed', request_id: requestId, error_class: 'parse_error', error_message: 'invalid_json' });
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
   }
 
-  let fields;
+  if (!body.form_response) {
+    logger.error({ event: 'lead.failed', request_id: requestId, error_class: 'parse_error', error_message: 'missing_form_response' });
+    return NextResponse.json({ error: 'missing_form_response' }, { status: 400 });
+  }
+
+  // 4. Extract fields by ref
+  let answers;
   try {
-    fields = extractNamedFields(payload);
+    answers = parseAnswers(body.form_response.answers ?? []);
   } catch (err) {
     logger.error({
       event: 'lead.failed',
@@ -2344,49 +2078,60 @@ export async function POST(req: Request, { params }: { params: Promise<{ secret:
     return NextResponse.json({ error: 'bad_payload' }, { status: 400 });
   }
 
-  const utmKeysPresent = [
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'sck', 'src',
-  ].filter((k) => typeof fields[k as keyof typeof fields] === 'string');
+  // 5. Extract UTMs from form_response.hidden
+  const utms = mapUtms(body.form_response.hidden);
+  const utmKeysPresent = Object.entries(utms)
+    .filter(([, v]) => v !== null)
+    .map(([k]) => k);
 
   logger.info({
     event: 'lead.mapped',
     request_id: requestId,
-    submission_id: payload.submission_id,
-    field_count_mapped: Object.keys(fields).length,
+    submission_id: body.form_response.token,
+    field_count_mapped: 5,
     utm_keys_present: utmKeysPresent,
   });
 
-  const landingUrl = req.headers.get('referer') ?? '';
+  // PII-safe landing URL: prefer Referer, fall back to site URL
+  const landingUrl = req.headers.get('referer') ?? env.NEXT_PUBLIC_SITE_URL ?? '';
 
+  // 6. Build Datacrazy payload
+  const datacrazyPayload = buildDatacrazyPayload({
+    answers,
+    utms,
+    landingUrl,
+    capturedAt: new Date().toISOString(),
+  });
+
+  // 7. POST to Datacrazy (sync — no waitUntil needed for 72h scope)
   const crmT0 = Date.now();
-  const crm = await postLead(
-    mapToDatacrazy(fields, { landingUrl, capturedAt: new Date().toISOString() }),
-  );
+  const crm = await postLead(datacrazyPayload);
   const crmMs = Date.now() - crmT0;
 
   if (!crm.ok) {
     logger.error({
       event: 'lead.failed',
       request_id: requestId,
-      submission_id: payload.submission_id,
+      submission_id: body.form_response.token,
       error_class: crm.errorClass,
       error_message: `datacrazy ${crm.status}: ${crm.bodySnippet}`,
     });
-    return NextResponse.json({ error: 'crm_failed' }, { status: 502 });
+    return NextResponse.json({ error: 'crm_failed' }, { status: 500 });
   }
 
-  waitUntil(
-    Promise.resolve().then(() =>
-      logger.info({
-        event: 'lead.forwarded',
-        request_id: requestId,
-        submission_id: payload.submission_id,
-        datacrazy_status: crm.status,
-        datacrazy_lead_id: crm.leadId,
-        timing_ms: crmMs,
-      }),
-    ),
-  );
+  // 8. Success — PII-redacted log
+  logger.info({
+    event: 'lead.forwarded',
+    request_id: requestId,
+    submission_id: body.form_response.token,
+    datacrazy_status: crm.status,
+    datacrazy_lead_id: crm.leadId,
+    timing_ms: crmMs,
+    // PII redaction in log (full data already sent to Datacrazy)
+    email_hint: redactEmail(answers.email),
+    phone_hint: redactPhone(answers.telefone),
+    name_hint: `${answers.nome.split(' ')[0]} ***`,
+  });
 
   return NextResponse.json({ ok: true, request_id: requestId }, { status: 200 });
 }
@@ -2396,7 +2141,7 @@ export function GET() {
 }
 ```
 
-- [ ] **Step 3: Run typecheck + lint + unit tests to confirm nothing regressed**
+- [ ] **Step 2: Run typecheck + lint + unit tests to confirm nothing regressed**
 
 ```bash
 pnpm typecheck
@@ -2406,11 +2151,11 @@ pnpm test
 
 Expected: all green.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add src/app/api/lead/route.ts src/app/api/lead/[secret]/route.ts
-git commit -m "feat(api): /api/lead handler wires auth, mapping, and CRM forwarding"
+git add src/app/api/lead/route.ts
+git commit -m "feat(api): /api/lead Typeform handler — HMAC auth, ref-keyed fields, UTM hidden, Datacrazy POST"
 ```
 
 ---
@@ -2711,61 +2456,63 @@ git commit -m "feat(attribution): UTMRehydrator uses useLayoutEffect + replaceSt
 
 ---
 
-### Task 15: [FEATURE] `components/yayforms-embed.tsx` — inline embed script injection
+### Task 15: [FEATURE] `components/typeform-embed.tsx` — Typeform React SDK widget
 
 **Files:**
-- Create: `src/components/yayforms-embed.tsx`
+- Create: `src/components/typeform-embed.tsx`
 - Modify: none
 - Test: smoke-verified via E2E in Task 19
 
-**Dependencies:** Task 14 (must render above UTMRehydrator), Task 5 (`getClientEnv`).
+**Dependencies:** Task 13 (`useAttribution` / `lib/attribution.ts`), Task 5 (`getClientEnv`).
 
-- [ ] **Step 1: Implement `src/components/yayforms-embed.tsx`**
+- [ ] **Step 1: Install `@typeform/embed-react`**
+
+```bash
+pnpm add @typeform/embed-react@^4.0.0
+```
+
+This is a production dependency (needed in the client bundle).
+
+- [ ] **Step 2: Implement `src/components/typeform-embed.tsx`**
 
 ```tsx
 'use client';
+import { Widget } from '@typeform/embed-react';
+import { useAttribution } from '@/lib/attribution';
 
-import { useEffect, useRef } from 'react';
-import { getClientEnv } from '@/lib/env';
-
-const TRANSITIVE_PARAMS = 'utm_source,utm_medium,utm_campaign,utm_content,utm_term,sck,src';
-
-export function YayFormsEmbed({ className }: { className?: string }) {
-  const env = getClientEnv();
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const scriptRef = useRef<HTMLScriptElement | null>(null);
-
-  useEffect(() => {
-    if (scriptRef.current) return;
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL}"]`,
-    );
-    if (existing) {
-      scriptRef.current = existing;
-      return;
-    }
-    const s = document.createElement('script');
-    s.src = env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL;
-    s.async = true;
-    s.defer = true;
-    scriptRef.current = s;
-    document.body.appendChild(s);
-  }, [env.NEXT_PUBLIC_YAYFORMS_SCRIPT_URL]);
-
+export function TypeformEmbed({ formId }: { formId: string }) {
+  const { utms } = useAttribution(); // reads localStorage first-touch, returns Partial<Record<UtmKey, string>>
   return (
-    <div
-      ref={containerRef}
-      className={className}
-      data-yf-id={env.NEXT_PUBLIC_YAYFORMS_FORM_ID}
-      data-yf-type="standard"
-      data-yf-transitive-search-params={TRANSITIVE_PARAMS}
-      aria-label="Formulário de inscrição Outlier Experience"
+    <Widget
+      id={formId}
+      hidden={utms}            // 7 UTM keys passed as Typeform hidden fields
+      inlineOnMobile
+      opacity={0}
+      className="w-full h-[600px]"
     />
   );
 }
 ```
 
-- [ ] **Step 2: Typecheck + lint**
+> **Note on `useAttribution`:** This hook must be added to `src/lib/attribution.ts` as a thin React hook wrapper: reads `readStoredAttribution()` on mount, returns `{ utms: Attribution }`. Add it alongside the existing pure helpers — no separate file needed.
+
+- [ ] **Step 3: Add `useAttribution` hook to `src/lib/attribution.ts`**
+
+Append to `src/lib/attribution.ts`:
+```typescript
+import { useState, useEffect } from 'react';
+
+export function useAttribution(): { utms: Attribution } {
+  const [utms, setUtms] = useState<Attribution>({});
+  useEffect(() => {
+    const stored = readStoredAttribution();
+    if (stored) setUtms(stored);
+  }, []);
+  return { utms };
+}
+```
+
+- [ ] **Step 4: Typecheck + lint**
 
 ```bash
 pnpm typecheck
@@ -2773,446 +2520,326 @@ pnpm lint
 ```
 Expected: clean.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/yayforms-embed.tsx
-git commit -m "feat(ui): YayFormsEmbed component injects script and renders inline mount point"
+git add src/components/typeform-embed.tsx src/lib/attribution.ts
+git commit -m "feat(ui): TypeformEmbed with @typeform/embed-react Widget + useAttribution hook"
 ```
 
 ---
 
-### Task 15a: [SPIKE] Evaluate Figma tool path — MCP vs manual Dev Mode (agent:pair, BLOCKS Task 16)
-
-**Files:**
-- Create: `docs/decisions/2026-04-15-figma-extraction.md`
-- Modify: none
-
-**Dependencies:** Task 2 (repo exists to commit decisions), Figma view access granted on the briefing file, Figma MCP authenticated (`claude mcp list` shows `plugin:figma:figma` as `✓ Connected` — user runs `/mcp` OAuth in Claude Code).
-
-**Why this exists:** Two redundant paths are available for extracting design tokens and building LP components from the Figma file — the official Figma MCP (`plugin:figma:figma` + the `/implement-design` skill) and manual Figma Dev Mode extraction. They have different failure modes: MCP can rate-limit, flake on auth, or misread complex nodes; manual Dev Mode is slow and prone to transcription errors but never breaks at a wrong moment. Running both side by side on the **same hero frame** before committing Task 16's path lets us pick the approach with evidence, not hope.
-
-**Handoff:** `agent:pair`. The human authenticates Figma, the human has Dev Mode open, and provides the agent access to try the MCP. The agent runs both extractions and writes the decision doc.
-
-- [ ] **Step 1 (HUMAN): Confirm prerequisites**
-
-Verify all three:
-```bash
-claude mcp list | grep figma
-# Expected: "plugin:figma:figma: ... - ✓ Connected"
-```
-- Figma view access granted on `https://www.figma.com/design/KhdDl0T5xLwOjUJHB1g0SA/LPs-2025?node-id=8304-51` (open in browser; no 403).
-- Figma desktop app open on that file with Dev Mode active (only required if MCP path uses local Dev Mode server; skip if MCP is cloud-only).
-
-Post a quick confirmation in the chat ("MCP connected / file accessible / Dev Mode open") so the agent knows to proceed.
-
-- [ ] **Step 2 (AGENT): Extract hero frame tokens via Figma MCP**
-
-Start a timer. Invoke the Figma plugin's baseline extraction on **node 8304-51** (the hero). Capture whatever the MCP returns: colors, fonts, spacing, radius, layout hints, any structured JSON. Save verbatim to a scratch file `docs/research/figma-mcp-output-hero.json`.
-
-Stop timer. Record:
-- **Wall time:** seconds from invocation to result
-- **API calls consumed** (if observable): Figma Dev seat budget is ~200/day / ~10/min — note any visible quota feedback
-- **Completeness:** do the returned tokens include every category we need (bg, fg, accent, muted, border, font-display, font-sans, h1/h2/body sizes, spacing, radius)?
-- **Fidelity:** hex values exact? or approximated?
-
-- [ ] **Step 3 (HUMAN + AGENT): Extract the same hero frame tokens via manual Dev Mode**
-
-Start a new timer. Human opens Figma Dev Mode on node 8304-51, reads the right-hand panel, pastes back — same structure as Task 16 Step 1 (colors with hex, fonts with family + weight, h1/h2/body sizes, section spacing, card radius). Agent saves to `docs/research/figma-manual-output-hero.md`.
-
-Stop timer. Record:
-- **Wall time:** seconds end-to-end (human reading + pasting + agent saving)
-- **Human effort:** number of distinct inspector panels the human had to open
-- **Fidelity:** every category covered, hex values exact
-
-- [ ] **Step 4 (AGENT): Run a second trial on a harder frame**
-
-Single-frame smoke is optimistic. Pick the CTA section frame (the one containing the YayForms embed slot) or any frame with nested auto-layout + multiple colors. Repeat Steps 2 and 3. Save as `docs/research/figma-mcp-output-cta.json` and `docs/research/figma-manual-output-cta.md`. The second trial exposes which path degrades worse on complex frames — MCP often truncates deep nodes; manual degrades from 2 min to 30 min on dense layouts.
-
-- [ ] **Step 5 (AGENT): Compare and write the decision doc**
-
-Create `docs/decisions/2026-04-15-figma-extraction.md`:
-
-```markdown
-# ADR: Figma extraction path for Task 16 and Task 17
-
-**Date:** 2026-04-15
-**Status:** Decided
-**Inputs:**
-- docs/research/figma-mcp-output-hero.json
-- docs/research/figma-manual-output-hero.md
-- docs/research/figma-mcp-output-cta.json
-- docs/research/figma-manual-output-cta.md
-
-## Scoreboard
-
-| Criterion | MCP path | Manual Dev Mode |
-|---|---|---|
-| Wall time (hero) | <N>s | <N>s |
-| Wall time (CTA) | <N>s | <N>s |
-| Completeness (categories returned / 10) | <N>/10 | <N>/10 |
-| Fidelity (hex exactness on 5 sampled colors) | <N>/5 | <N>/5 |
-| Rate-limit risk | <observation> | none |
-| Human attention required | agent-run, minimal | constant reading |
-| Reliability failure mode | auth drop, rate limit, schema drift | typo, missed field |
-
-## Decision
-
-- **Task 16 (token extraction) primary path:** <mcp | manual>
-- **Task 17 (LP shell generation) primary path:** <mcp via /implement-design | manual shadcn composition | hybrid>
-
-## Rationale
-
-<2–4 sentences grounded in the scoreboard. Name the specific failure mode of the losing path that made the winner preferable in this 72h window.>
-
-## Fallback
-
-If the primary path breaks mid-project (MCP 429, auth drop, etc.), switch without re-debate. Record a switch event in a new section if it happens.
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add docs/research/figma-*-output-*.* docs/decisions/2026-04-15-figma-extraction.md
-git commit -m "docs(spike): evaluate Figma MCP vs manual Dev Mode — pick the path for Task 16/17"
-git push origin main
-```
-
-**Acceptance:** ADR committed with a named winner. Task 16 and Task 17 consult this ADR before starting.
+<!-- Task 15a (Figma evaluation spike) DELETED: Figma MCP was used inline during the pivot session and the design has been read. No separate spike task needed. Proceed to Task 16 (Teste_dev port). -->
 
 ---
 
-### Task 16: [SETUP] Figma token extraction — execute primary path chosen in Task 15a (agent:pair)
+### Task 16: [SETUP] Port Teste_dev assets + design tokens (agent:ok)
 
 **Files:**
-- Create: `docs/design-tokens.json`
-- Modify: `src/app/globals.css` (replace neutral `@theme` tokens with Figma palette)
+- Create: `public/images/*` (25+ SVG/PNG assets from Teste_dev)
+- Create: `src/app/fonts/*` (Tomato Grotesk + Space Grotesk font files)
+- Modify: `src/app/globals.css` (replace with Teste_dev version)
+- Modify: `src/app/layout.tsx` (reference new fonts via `next/font/local`)
+- Modify: `package.json` (add browserslist Safari ≥ 15.4)
 
-**Dependencies:** Task 3, Task 15a (ADR dictates which path runs here), Figma view access granted.
+**Dependencies:** Task 3 (scaffold exists).
 
-**Handoff:** Read `docs/decisions/2026-04-15-figma-extraction.md` first. Execute the path named under "Task 16 (token extraction) primary path". The Task 15a trial output for the hero frame is a valid starting point — do not re-extract it. If the primary path breaks, switch to the other without re-approval and append a note to the ADR.
+**Port source:** `D:/Users/Johan/Dev Projects/Teste_dev/` — all assets already Ebulição-correct.
 
-- [ ] **Step 1a (if primary = MCP): Complete extraction across all sections**
+- [ ] **Step 1: Copy image assets**
 
-Run the Figma plugin baseline extraction on every top-level section of the LP (hero, about, speakers, CTA, footer). Aggregate into a single `docs/design-tokens.json` — one object with keys per section + a shared `tokens` block for palette, fonts, radius, spacing. Use the hero output from Task 15a as the seed.
-
-- [ ] **Step 1b (if primary = manual Dev Mode): Open the Figma file in Dev Mode and record tokens**
-
-Target: `LPs 2025 — Node 8304-51` (URL: `https://www.figma.com/design/KhdDl0T5xLwOjUJHB1g0SA/LPs-2025?node-id=8304-51`). In Dev Mode, select the hero frame and read the right-hand panel. Capture — paste into a scratch block for the agent:
-
-```
-# Colors (hex, labeled)
-background:          #??????
-foreground:          #??????
-accent / cta:        #??????
-accent-foreground:   #??????
-muted:               #??????
-muted-foreground:    #??????
-border:              #??????
-
-# Fonts
-display:  <family> <weight>    (e.g., "Sora 700")
-sans:     <family> <weight>    (e.g., "Inter 400")
-
-# Heading / body sizes (px from Dev Mode)
-h1:       ??
-h2:       ??
-body:     ??
-
-# Spacing (px; read from a couple of representative frames)
-section vertical:  ??
-card gap:          ??
-
-# Border radius
-card/button:  ?? px
+```bash
+cp -r "D:/Users/Johan/Dev Projects/Teste_dev/public/images/." public/images/
 ```
 
-If an image is uploaded to the chat with the same values annotated, use that instead — hex codes are readable.
+Assets include: `logo-ebulicao.png`, `logo-ticto.png`, `logo-ticto-phone.svg`, `iphone-16-pro.png`, `hero-ticto-m1.svg`, `hero-ticto-m2.svg`, `bg.png`, `bg-blur-left.svg`, `bg-blur-right.svg`, `badge-pci.png`, `badge-r2024.png`, `icon-arrow.svg`, `icon-arrow-sm.svg`, `icon-chevron.svg`, `icon-shield.svg`, `social-fb.svg`, `social-ig.svg`, `social-in.svg`, `footer-ticto-1.svg`, `footer-ticto-2.svg`.
 
-- [ ] **Step 2 (AGENT): Write `docs/design-tokens.json`**
+- [ ] **Step 2: Copy font files**
 
-Convert every hex to OKLCH (use `https://oklch.com` — the agent can call WebFetch to compute, or convert deterministically via a small inline script). Save the **raw** record (hex + OKLCH + source nodes) to `docs/design-tokens.json` so the source of truth is auditable:
+```bash
+mkdir -p src/app/fonts
+cp -r "D:/Users/Johan/Dev Projects/Teste_dev/src/app/fonts/." src/app/fonts/
+```
 
+Font files:
+- `TomatoGrotesk-Black.otf`, `TomatoGrotesk-BlackSlanted.otf`, `TomatoGrotesk-Bold.otf`, `TomatoGrotesk-BoldSlanted.otf`, `TomatoGrotesk-Light.otf`, `TomatoGrotesk-LightSlanted.otf`, `TomatoGrotesk-Regular.otf`, `TomatoGrotesk-Slanted.otf`
+- `SpaceGrotesk-Bold.ttf`, `SpaceGrotesk-Light.ttf`, `SpaceGrotesk-Medium.ttf`, `SpaceGrotesk-Regular.ttf`, `SpaceGrotesk-SemiBold.ttf`
+
+- [ ] **Step 3: Replace `src/app/globals.css` with Teste_dev version**
+
+Replace the entire contents of `src/app/globals.css` with:
+
+```css
+@import "tailwindcss";
+
+@theme {
+    --color-brand-cyan: #5bbed9;
+    --color-bg-dark: #030712;
+    --color-bg-black: #000000;
+    --color-bg-white: #ffffff;
+    --color-input-bg: #f2f2f2;
+    --color-placeholder: #6d6d6d;
+    --color-dark-700: #0d0b1a;
+    --color-accent-orange: #ff9c2b;
+    --color-text-muted: #d9d9d9;
+
+    --font-tomato: "Tomato Grotesk", sans-serif;
+    --font-inter: "Inter", sans-serif;
+    --font-space: "Space Grotesk", sans-serif;
+}
+
+@layer base {
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    html,
+    body {
+        min-height: 100vh; /* Fallback for Safari < 15.4 */
+        min-height: 100svh; /* Modern browsers */
+        background-color: var(--color-bg-dark);
+        color: var(--color-bg-white);
+        font-family: var(--font-space);
+        color-scheme: dark;
+        -webkit-font-smoothing: antialiased;
+        /* Safari: prevent tap highlight flash on interactive elements */
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Safari < 15.4: backdrop-filter prefix */
+    .backdrop-blur-sm {
+        -webkit-backdrop-filter: blur(4px);
+        backdrop-filter: blur(4px);
+    }
+
+    /* Fix border-radius on inputs/selects in Safari */
+    input,
+    select,
+    textarea {
+        -webkit-appearance: none;
+        appearance: none;
+    }
+}
+
+@layer utilities {
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    .animate-fade-in {
+        animation: fade-in 0.4s ease-out both;
+    }
+
+    .pill-input {
+        @apply w-full px-[25px] py-[16px] rounded-[66px] bg-[var(--color-input-bg)] border border-transparent text-bg-black font-space text-[14px] transition-[background-color,border-color,box-shadow,color] duration-300;
+    }
+    .pill-input::placeholder {
+        @apply text-placeholder;
+    }
+    .pill-input:focus-visible {
+        @apply border-brand-cyan bg-bg-white shadow-[0_0_0_2px_rgba(91,190,217,0.2)] outline outline-2 outline-brand-cyan/40;
+    }
+
+    .ddd-input:focus {
+        @apply border-accent-orange shadow-[0_0_0_2px_rgba(255,156,43,0.2)];
+    }
+
+    @keyframes shimmer {
+        0% {
+            transform: translateX(-150%) skewX(-20deg);
+        }
+        100% {
+            transform: translateX(250%) skewX(-20deg);
+        }
+    }
+
+    .btn-primary {
+        @apply flex w-full justify-center items-center gap-2.5 px-[76px] py-4 rounded-[66px] bg-brand-cyan text-[#F6F6F6] font-tomato font-bold text-sm border-none cursor-pointer transition-transform duration-200 active:scale-95 hover:opacity-90 relative overflow-hidden;
+    }
+
+    .btn-primary::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 45%;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.25),
+            transparent
+        );
+        animation: shimmer 2.5s ease-in-out infinite 0.8s;
+    }
+
+    .promo-frame-gradient {
+        --border-width: 1px;
+        position: relative;
+        border-radius: 8px;
+        background: linear-gradient(
+            261deg,
+            rgba(255, 255, 255, 0.10) -16.3%,
+            rgba(255, 255, 255, 0.00) 113.33%
+        );
+    }
+
+    .promo-frame-gradient::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        padding: var(--border-width, 1px);
+        border-radius: inherit;
+        background: linear-gradient(
+            225deg,
+            rgba(91, 190, 217, 1) 0%,
+            rgba(91, 190, 217, 0) 65%
+        );
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        -webkit-mask-composite: xor;
+        pointer-events: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .animate-fade-in,
+        .btn-primary::after {
+            animation: none !important;
+        }
+
+        *,
+        *::before,
+        *::after {
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+        }
+    }
+}
+```
+
+- [ ] **Step 4: Update `src/app/layout.tsx` to reference new fonts**
+
+Replace the Geist font imports with local font declarations:
+
+```tsx
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import './globals.css';
+
+const tomatoGrotesk = localFont({
+  src: [
+    { path: './fonts/TomatoGrotesk-Regular.otf',  weight: '400', style: 'normal' },
+    { path: './fonts/TomatoGrotesk-Bold.otf',     weight: '700', style: 'normal' },
+    { path: './fonts/TomatoGrotesk-Black.otf',    weight: '900', style: 'normal' },
+  ],
+  variable: '--font-tomato',
+  display: 'swap',
+});
+
+const spaceGrotesk = localFont({
+  src: [
+    { path: './fonts/SpaceGrotesk-Regular.ttf', weight: '400', style: 'normal' },
+    { path: './fonts/SpaceGrotesk-Medium.ttf',  weight: '500', style: 'normal' },
+    { path: './fonts/SpaceGrotesk-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: './fonts/SpaceGrotesk-Bold.ttf',    weight: '700', style: 'normal' },
+  ],
+  variable: '--font-space',
+  display: 'swap',
+});
+
+export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+  title: 'Ebulição × Ticto',
+  description: 'Cadastre-se e concorra a um iPhone 16 Pro. Evento Rafa Prado × Ticto.',
+  openGraph: {
+    title: 'Ebulição × Ticto',
+    description: 'Cadastre-se e concorra a um iPhone 16 Pro. Evento Rafa Prado × Ticto.',
+    type: 'website',
+  },
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR" className={`${tomatoGrotesk.variable} ${spaceGrotesk.variable}`}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+- [ ] **Step 5: Add Safari ≥ 15.4 to browserslist in `package.json`**
+
+Add or merge a `browserslist` field in `package.json`:
 ```json
-{
-  "source_url": "https://www.figma.com/design/KhdDl0T5xLwOjUJHB1g0SA/LPs-2025?node-id=8304-51",
-  "captured_at": "2026-04-15T14:00:00Z",
-  "capture_method": "manual_dev_mode",
-  "colors": {
-    "background":        { "hex": "#??????", "oklch": "oklch(...)" },
-    "foreground":        { "hex": "#??????", "oklch": "oklch(...)" },
-    "accent":            { "hex": "#??????", "oklch": "oklch(...)" },
-    "accent_foreground": { "hex": "#??????", "oklch": "oklch(...)" },
-    "muted":             { "hex": "#??????", "oklch": "oklch(...)" },
-    "muted_foreground":  { "hex": "#??????", "oklch": "oklch(...)" },
-    "border":            { "hex": "#??????", "oklch": "oklch(...)" }
-  },
-  "fonts": {
-    "display": { "family": "...", "weight": 700, "google_fonts": true },
-    "sans":    { "family": "...", "weight": 400, "google_fonts": true }
-  },
-  "sizes_px": { "h1": 0, "h2": 0, "body": 0 },
-  "spacing_px": { "section_y": 0, "card_gap": 0 },
-  "radius_px": 0
-}
+"browserslist": [
+  "last 2 Chrome versions",
+  "last 2 Firefox versions",
+  "last 2 Edge versions",
+  "Safari >= 15.4",
+  "iOS >= 15.4"
+]
 ```
 
-- [ ] **Step 3 (AGENT): Patch `src/app/globals.css`**
-
-Rewrite the `@theme` block to match (use the OKLCH values from `docs/design-tokens.json`):
-
-```css
-@theme {
-  --color-background: oklch(? ? ?);
-  --color-foreground: oklch(? ? ?);
-  --color-accent: oklch(? ? ?);
-  --color-accent-foreground: oklch(? ? ?);
-  --color-muted: oklch(? ? ?);
-  --color-muted-foreground: oklch(? ? ?);
-  --color-border: oklch(? ? ?);
-
-  --font-display: var(--font-display-figma, system-ui, sans-serif);
-  --font-sans: var(--font-sans-figma, system-ui, sans-serif);
-
-  --radius: ?rem; /* px ÷ 16 */
-}
-```
-
-If the Figma fonts are Google Fonts, wire them in `src/app/layout.tsx` via `next/font` (similar to the existing `Geist` / `Geist_Mono` imports); otherwise add a code comment justifying the system-font fallback.
-
-- [ ] **Step 2 (AGENT): Distill `docs/design-tokens.json` into `src/app/globals.css` `@theme` block**
-
-Open the JSON; identify:
-- Primary background color
-- Primary text color
-- Accent/CTA color
-- Font families (map to `next/font` variable)
-- Base radius and spacing steps
-
-Rewrite the `@theme` block in `src/app/globals.css` to match. Example shape (fill with real OKLCH values converted from the Figma hex codes — use `https://oklch.com` to convert):
-
-```css
-@theme {
-  --color-background: oklch(0.98 0.01 260);        /* Figma "bg/primary" */
-  --color-foreground: oklch(0.18 0.02 260);        /* Figma "text/primary" */
-  --color-accent: oklch(0.72 0.17 35);             /* Figma "brand/orange" */
-  --color-accent-foreground: oklch(1 0 0);
-  --color-muted: oklch(0.96 0.01 260);
-  --color-muted-foreground: oklch(0.45 0.02 260);
-  --color-border: oklch(0.9 0.01 260);
-
-  --font-display: var(--font-display-figma, system-ui, sans-serif);
-  --font-sans: var(--font-sans-figma, system-ui, sans-serif);
-
-  --radius: 1rem;      /* Figma corner radius */
-}
-```
-
-(If the Figma fonts are Google Fonts, import them via `next/font` in `layout.tsx` and assign the variables accordingly; otherwise use a documented system-font fallback and leave a code comment explaining why.)
-
-- [ ] **Step 3: Typecheck + build to confirm CSS validates**
+- [ ] **Step 6: Verify**
 
 ```bash
-pnpm typecheck
 pnpm build
+pnpm check:secrets
 ```
 
-Expected: build completes. Open `.next/static/css/*.css` and grep for the new token names to confirm they shipped (`grep -r "color-accent" .next/static/css/`). Delete build output if it bothers you: `rm -rf .next`.
+Expected: build succeeds; `check:secrets` passes.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add docs/design-tokens.json src/app/globals.css src/app/layout.tsx
-git commit -m "feat(design): Figma tokens extracted one-shot; @theme tokens synced"
+git add public/images src/app/fonts src/app/globals.css src/app/layout.tsx package.json
+git commit -m "feat(design): port Teste_dev assets, fonts, and globals.css (Ebulição brand tokens)"
 ```
 
 ---
 
-### Task 17: [FEATURE] LP shell — hero, sections, shadcn primitives, layout
+### Task 17: [FEATURE] Port Teste_dev LP components (Hero, Rules, Footer) (agent:ok)
 
 **Files:**
-- Create:
-  - `src/components/sections/hero.tsx`
-  - `src/components/sections/about.tsx`
-  - `src/components/sections/speakers.tsx`
-  - `src/components/sections/cta.tsx`
-  - `src/components/sections/footer.tsx`
-- Modify: `src/app/page.tsx`
-- Test: visual smoke via `pnpm dev` + `/browse` or manual check (no unit tests per spec)
+- Create: `src/components/Hero.tsx`, `src/components/Rules.tsx`, `src/components/Footer.tsx`
+- Modify: `src/app/page.tsx` (layout skeleton from Teste_dev, form column uses TypeformEmbed)
 
-**Dependencies:** Task 3, Task 16.
+**Dependencies:** Task 15 (TypeformEmbed component), Task 16 (assets + globals.css).
 
-- [ ] **Step 1: Install shadcn primitives needed for the LP**
+**Port source:** `D:/Users/Johan/Dev Projects/Teste_dev/src/components/` — Hero.tsx, Rules.tsx, Footer.tsx are already Ebulição-correct. Copy verbatim. Do NOT port `SignupForm.tsx` (form UI is now the Typeform widget). Do NOT port `src/lib/supabase.ts` or `api/send-email/route.ts` (unused in this architecture).
 
-Consult `docs/design-tokens.json` + the Figma layout to decide which primitives are actually used. For a conference LP you will typically need `button`, `card`, `separator`. Install:
+**canvas-confetti:** Optional nice-to-have — the Typeform React SDK supports an `onSubmit` callback. If time allows, fire confetti on submission for delight. Not required for acceptance.
+
+- [ ] **Step 1: Copy components from Teste_dev**
 
 ```bash
-pnpm dlx shadcn@latest add button card separator
+cp "D:/Users/Johan/Dev Projects/Teste_dev/src/components/Hero.tsx" src/components/
+cp "D:/Users/Johan/Dev Projects/Teste_dev/src/components/Rules.tsx" src/components/
+cp "D:/Users/Johan/Dev Projects/Teste_dev/src/components/Footer.tsx" src/components/
 ```
 
-This creates files under `src/components/ui/`.
+- [ ] **Step 2: Replace `src/app/page.tsx` with Teste_dev's layout skeleton**
 
-- [ ] **Step 2: Write each section component**
-
-`src/components/sections/hero.tsx`:
-```tsx
-import { Button } from '@/components/ui/button';
-
-export function Hero() {
-  return (
-    <section className="relative flex min-h-[80vh] flex-col items-center justify-center gap-8 px-6 py-24 text-center">
-      <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">
-        Ticto apresenta
-      </p>
-      <h1 className="max-w-4xl font-display text-5xl font-bold leading-[1.05] md:text-7xl">
-        Outlier Experience 2025
-      </h1>
-      <p className="max-w-2xl text-lg text-muted-foreground">
-        O principal evento presencial de marketing digital da Ticto. Três dias de
-        palestras, conexões e execução ao lado de quem move o mercado.
-      </p>
-      <Button asChild size="lg" className="mt-4">
-        <a href="#inscricao">Garanta seu ingresso</a>
-      </Button>
-    </section>
-  );
-}
-```
-
-`src/components/sections/about.tsx`:
-```tsx
-import { Card } from '@/components/ui/card';
-
-const pillars = [
-  {
-    title: 'Conteúdo denso',
-    body: 'Palcos com operadores que tocam operações de 8 e 9 dígitos. Sem teoria abstrata — execução real.',
-  },
-  {
-    title: 'Networking real',
-    body: 'Ambiente curado para conexões entre produtores, especialistas e investidores.',
-  },
-  {
-    title: 'Experiência presencial',
-    body: 'Imersão de três dias, sem distração. Feito para quem leva o negócio a sério.',
-  },
-];
-
-export function About() {
-  return (
-    <section className="px-6 py-24">
-      <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1fr_2fr]">
-        <div>
-          <h2 className="font-display text-4xl font-bold">
-            O que é o Outlier Experience
-          </h2>
-          <p className="mt-4 text-muted-foreground">
-            O evento de marketing digital da Ticto desenhado para operadores que
-            querem mais que teoria. Aqui, a régua é execução.
-          </p>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {pillars.map((p) => (
-            <Card key={p.title} className="flex flex-col gap-3 p-6">
-              <h3 className="text-lg font-semibold">{p.title}</h3>
-              <p className="text-sm text-muted-foreground">{p.body}</p>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-```
-
-`src/components/sections/speakers.tsx`:
-```tsx
-import { Card } from '@/components/ui/card';
-
-const speakers = [
-  { name: 'A confirmar', role: 'Headliner' },
-  { name: 'A confirmar', role: 'Headliner' },
-  { name: 'A confirmar', role: 'Headliner' },
-  { name: 'A confirmar', role: 'Headliner' },
-];
-
-export function Speakers() {
-  return (
-    <section className="px-6 py-24">
-      <div className="mx-auto max-w-6xl">
-        <h2 className="font-display text-4xl font-bold">Quem vai subir no palco</h2>
-        <p className="mt-2 text-muted-foreground">
-          Nomes confirmados em breve. Inscritos recebem a lista completa antes do lançamento público.
-        </p>
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {speakers.map((s, i) => (
-            <Card key={i} className="flex h-60 flex-col justify-end p-6">
-              <p className="text-sm text-muted-foreground">{s.role}</p>
-              <p className="text-xl font-semibold">{s.name}</p>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-```
-
-`src/components/sections/cta.tsx`:
-```tsx
-import { YayFormsEmbed } from '@/components/yayforms-embed';
-
-export function CTA() {
-  return (
-    <section id="inscricao" className="px-6 py-24">
-      <div className="mx-auto max-w-3xl rounded-[var(--radius)] border bg-muted/40 p-8 shadow-sm md:p-12">
-        <h2 className="font-display text-4xl font-bold">Garanta sua presença</h2>
-        <p className="mt-2 text-muted-foreground">
-          Preencha o formulário abaixo. Enviaremos os próximos passos por e-mail.
-        </p>
-        <div className="mt-8">
-          <YayFormsEmbed className="min-h-[520px]" />
-        </div>
-      </div>
-    </section>
-  );
-}
-```
-
-`src/components/sections/footer.tsx`:
-```tsx
-import { Separator } from '@/components/ui/separator';
-
-export function Footer() {
-  return (
-    <footer className="px-6 pb-12 pt-24">
-      <Separator />
-      <div className="mx-auto mt-8 flex max-w-6xl flex-col items-start justify-between gap-4 text-sm text-muted-foreground md:flex-row">
-        <p>© 2026 Ticto. Todos os direitos reservados.</p>
-        <p>
-          <a
-            href="https://ticto.com.br"
-            className="underline-offset-4 hover:underline"
-            rel="noreferrer"
-          >
-            ticto.com.br
-          </a>
-        </p>
-      </div>
-    </footer>
-  );
-}
-```
-
-- [ ] **Step 3: Replace `src/app/page.tsx` to compose the sections with UTMRehydrator at the top**
+Port `D:/Users/Johan/Dev Projects/Teste_dev/src/app/page.tsx` — but replace the form column's `<SignupForm />` with the Typeform embed wrapper:
 
 ```tsx
 import { UTMRehydrator } from '@/components/utm-rehydrator';
-import { Hero } from '@/components/sections/hero';
-import { About } from '@/components/sections/about';
-import { Speakers } from '@/components/sections/speakers';
-import { CTA } from '@/components/sections/cta';
-import { Footer } from '@/components/sections/footer';
+import { Hero } from '@/components/Hero';
+import { Rules } from '@/components/Rules';
+import { Footer } from '@/components/Footer';
+import { TypeformEmbed } from '@/components/typeform-embed';
 
 export default function Page() {
   return (
@@ -3220,9 +2847,21 @@ export default function Page() {
       <UTMRehydrator />
       <main>
         <Hero />
-        <About />
-        <Speakers />
-        <CTA />
+        <Rules />
+        {/* Typeform embed — replaces Teste_dev's SignupForm */}
+        <section id="cadastro" className="px-6 py-16">
+          <div className="mx-auto max-w-lg">
+            <div className="rounded-2xl border border-brand-cyan/20 bg-dark-700 p-8 shadow-xl">
+              <h2 className="mb-2 font-tomato text-2xl font-bold text-bg-white">
+                CADASTRO 100% GRATUITO
+              </h2>
+              <p className="mb-6 text-sm text-text-muted flex items-center gap-1">
+                <span>🔒</span> Seus dados estão seguros
+              </p>
+              <TypeformEmbed formId={process.env.NEXT_PUBLIC_TYPEFORM_FORM_ID!} />
+            </div>
+          </div>
+        </section>
       </main>
       <Footer />
     </>
@@ -3230,42 +2869,42 @@ export default function Page() {
 }
 ```
 
-- [ ] **Step 4: Start dev server and smoke-test at 4 viewports**
+- [ ] **Step 3: Start dev server and smoke-test at 4 viewports**
 
 ```bash
 pnpm dev
 ```
 
-In a browser (or via `/browse`), load `http://localhost:3000/`. Check:
-- Layout renders without hydration warnings in the console
-- YayForms embed loads (may show loading indicator until script finishes)
-- All sections visible at 375, 768, 1280, 1920 widths
+Load `http://localhost:3000/`. Check:
+- LP renders visually 1:1 with Figma (except form card inner which shows Typeform widget)
+- Hero, Rules, Footer sections visible at 375, 768, 1280, 1920 widths
+- No hydration warnings in console
 
 Stop the server (`Ctrl-C`) when done.
 
-- [ ] **Step 5: Typecheck + lint**
+- [ ] **Step 4: Typecheck + lint**
 
 ```bash
 pnpm typecheck
 pnpm lint
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/page.tsx src/components/sections src/components/ui
-git commit -m "feat(ui): LP shell with hero, about, speakers, CTA, footer and inline YayForms embed"
+git add src/components/Hero.tsx src/components/Rules.tsx src/components/Footer.tsx src/app/page.tsx
+git commit -m "feat(ui): port Teste_dev LP components (Hero, Rules, Footer) + Typeform embed slot"
 ```
 
 ---
 
-### Task 18: [FEATURE] Integrate YayFormsEmbed on LP — verified end-to-end locally
+### Task 18: [FEATURE] Integrate TypeformEmbed on LP — verified end-to-end locally
 
 **Files:**
-- Modify: nothing new; this task is a verification pass that the embed actually receives UTMs.
-- Test: manual ad-hoc smoke — no file changes.
+- Modify: `src/app/page.tsx` if TypeformEmbed wrapper needs adjustment after smoke test.
+- Test: manual ad-hoc smoke — no file changes unless a fix is needed.
 
-**Dependencies:** Task 17.
+**Dependencies:** Task 17 (LP shell with Typeform embed slot).
 
 - [ ] **Step 1: Start dev server with UTM query string**
 
@@ -3275,30 +2914,39 @@ pnpm dev
 
 Open:
 ```
-http://localhost:3000/?utm_source=linkedin&utm_medium=organic&utm_campaign=outlier2025&utm_content=hero-cta&utm_term=evento-presencial&sck=abc123&src=review
+http://localhost:3000/?utm_source=linkedin&utm_medium=organic&utm_campaign=ebulicao2026&utm_content=hero-cta&utm_term=raffle&sck=abc123&src=lp
 ```
 
-- [ ] **Step 2: Confirm in DevTools that the embed div carries the transitive attr**
+- [ ] **Step 2: Confirm localStorage was written**
 
-Open the Elements panel. Find the `<div data-yf-id="...">` — it should also have `data-yf-transitive-search-params="utm_source,utm_medium,utm_campaign,utm_content,utm_term,sck,src"`. In the Console:
+In the browser DevTools Console:
 ```javascript
 JSON.parse(localStorage.getItem('first_touch_utms_v1'))
 ```
 Expected: an object containing all 7 params + `landing_page: "/"` + a `captured_at` ISO timestamp.
 
-- [ ] **Step 3: Reload without query string and verify replacement**
+- [ ] **Step 3: Reload without query string and verify rehydration**
 
-Navigate to `http://localhost:3000/` (no query string). Open DevTools Network tab, watch the URL update. Expect `history.replaceState` to restore all 7 UTMs back into the URL **before** the YayForms iframe finishes loading. Confirm in the Elements panel the iframe `src` includes the 7 params.
+Navigate to `http://localhost:3000/` (no query string). The UTMRehydrator should call `history.replaceState` before mount — confirm in the URL bar that all 7 params are restored.
 
-- [ ] **Step 4: Submit a test lead** (if Datacrazy token is set locally)
+- [ ] **Step 4: Confirm Typeform widget receives UTMs**
 
-Fill and submit the form with dummy data. Watch terminal logs: you should see `lead.received`, `lead.mapped`, `lead.forwarded` JSON lines. Check Datacrazy CRM inbox for the new lead with `source=linkedin` and a `notes` blob containing all 7 params.
+The `TypeformEmbed` passes `utms` to the Widget's `hidden` prop — Typeform will populate `form_response.hidden` on submission. Inspect the Network tab: when the Typeform iframe loads, it should include the UTM params in its `?typeform-source=` or query string.
 
-> If you don't want to hit the real Datacrazy yet, skip Step 4 — Task 19 covers it with a mock. But a single real submission here is the fastest way to prove the whole chain.
+- [ ] **Step 5: Submit a test lead** (if `TYPEFORM_WEBHOOK_SECRET` + `DATACRAZY_API_TOKEN` set locally)
 
-- [ ] **Step 5: Commit the dev session findings as a smoke log**
+Fill and submit the form. The Typeform webhook fires to your configured endpoint (currently webhook.site during dev — update to `http://localhost:3000/api/lead` via an `ngrok` tunnel or Vercel Preview for real E2E). Watch terminal logs: you should see `lead.received`, `lead.mapped`, `lead.forwarded` JSON lines.
 
-Nothing to commit. If something broke, roll back and re-open the failing file. No code changes in this task.
+> If local webhook routing is not set up, skip Step 5 — Task 19 covers CRM mock testing. A single real submission on Vercel Preview (Task 25) is the live evidence.
+
+- [ ] **Step 6: Commit if any fix needed**
+
+If `page.tsx` or `typeform-embed.tsx` needed a fix, commit it now. Otherwise no commit needed.
+
+```bash
+git add src/app/page.tsx src/components/typeform-embed.tsx
+git commit -m "fix(ui): adjust TypeformEmbed wrapper after smoke test"
+```
 
 ---
 
@@ -3318,7 +2966,7 @@ Create `tests/e2e/lead-flow.spec.ts`:
 import { expect, test } from '@playwright/test';
 
 const UTM_QUERY =
-  'utm_source=linkedin&utm_medium=organic&utm_campaign=outlier2025&utm_content=hero-cta&utm_term=evento-presencial&sck=abc123&src=review';
+  'utm_source=linkedin&utm_medium=organic&utm_campaign=ebulicao2026&utm_content=hero-cta&utm_term=raffle&sck=abc123&src=review';
 
 test.describe('Lead flow — mocked Datacrazy', () => {
   test('first visit persists UTMs and a later submission carries them to the CRM call', async ({ page, context }) => {
@@ -3350,14 +2998,17 @@ test.describe('Lead flow — mocked Datacrazy', () => {
     expect(storedObj.sck).toBe('abc123');
     expect(storedObj.src).toBe('review');
 
-    // Fill YayForms iframe (iframe title may vary; target by role fallback)
+    // Fill Typeform iframe (Typeform renders inside an iframe)
     const iframeLocator = page
-      .frameLocator('iframe')
+      .frameLocator('iframe[src*="typeform"]')
       .first();
     await iframeLocator.getByLabel(/nome/i).fill('Teste Playwright');
+    await iframeLocator.getByLabel(/cpf/i).fill('12345678900');
     await iframeLocator.getByLabel(/e-?mail/i).fill('qa+playwright@example.com');
     await iframeLocator.getByLabel(/telefone|phone/i).fill('+5511988887777');
-    await iframeLocator.getByRole('button', { name: /enviar|submeter|submit/i }).click();
+    // sells_online is a multiple choice — select "Sim"
+    await iframeLocator.getByRole('button', { name: /sim/i }).click();
+    await iframeLocator.getByRole('button', { name: /enviar|submeter|submit|próximo/i }).click();
 
     // Wait for the mocked CRM call to be captured
     await expect.poll(() => crmRequests.length, { timeout: 15_000 }).toBeGreaterThan(0);
@@ -3376,16 +3027,16 @@ test.describe('Lead flow — mocked Datacrazy', () => {
     const notes = JSON.parse(last.body.notes as string) as Record<string, string>;
     expect(notes.utm_source).toBe('linkedin');
     expect(notes.utm_medium).toBe('organic');
-    expect(notes.utm_campaign).toBe('outlier2025');
+    expect(notes.utm_campaign).toBe('ebulicao2026');
     expect(notes.utm_content).toBe('hero-cta');
-    expect(notes.utm_term).toBe('evento-presencial');
+    expect(notes.utm_term).toBe('raffle');
     expect(notes.sck).toBe('abc123');
     expect(notes.src).toBe('review');
   });
 });
 ```
 
-> The iframe selector uses `.first()` because the YayForms embed is the only iframe on the page. If `sections/cta.tsx` is expanded to include more iframes later, scope via the container div instead.
+> The iframe selector uses `iframe[src*="typeform"]` to target Typeform's embed specifically. If the selector flakes (Typeform may use `embed.typeform.com`), broaden to `.frameLocator('iframe').first()` and note the change.
 
 - [ ] **Step 2: Run locally against the dev server**
 
@@ -3393,7 +3044,7 @@ test.describe('Lead flow — mocked Datacrazy', () => {
 pnpm e2e
 ```
 
-Expected: the test passes. Playwright auto-starts `pnpm dev` via `webServer` config. If the iframe label locator fails, open the YayForms form in a browser and read the field placeholders — update the regex in `getByLabel` to match. Commit the final passing locator.
+Expected: the test passes. Playwright auto-starts `pnpm dev` via `webServer` config. If the iframe label locator fails, open the Typeform form (`https://form.typeform.com/to/FbFMsO5x`) in a browser and read the field question text — update the regex in `getByLabel` to match. Commit the final passing locator.
 
 - [ ] **Step 3: Commit**
 
@@ -3458,12 +3109,10 @@ jobs:
         run: pnpm build
         env:
           DATACRAZY_API_TOKEN: ci-placeholder-token
-          YAYFORMS_FIELD_MAP: '{"nome":"n","email":"e","telefone":"t","utm_source":"us","utm_medium":"um","utm_campaign":"uc","utm_content":"uco","utm_term":"ut","sck":"sk","src":"sr"}'
-          WEBHOOK_AUTH_MODE: hmac
-          YAYFORMS_WEBHOOK_SECRET: ci-placeholder-secret-abcdef
-          NEXT_PUBLIC_YAYFORMS_FORM_ID: ci-form
-          NEXT_PUBLIC_YAYFORMS_SCRIPT_URL: https://embed.yayforms.com/init.js
-          NEXT_PUBLIC_SITE_URL: https://ticto-outlier-lp.vercel.app
+          TYPEFORM_WEBHOOK_SECRET: ci-placeholder-typeform-secret-abcdef
+          TYPEFORM_FORM_ID: FbFMsO5x
+          NEXT_PUBLIC_TYPEFORM_FORM_ID: FbFMsO5x
+          NEXT_PUBLIC_SITE_URL: https://ticto-ebulicao-lp.vercel.app
 
       - name: Check secret leaks
         run: pnpm check:secrets
@@ -3612,13 +3261,13 @@ gh secret set ANTHROPIC_API_KEY
 - [ ] **Step 3: Enable CodeQL (default config)**
 
 ```bash
-gh api -X PUT /repos/johansabent/ticto-outlier-lp/code-scanning/default-setup \
+gh api -X PUT /repos/johansabent/ticto-ebulicao-lp/code-scanning/default-setup \
   -f state=configured \
   -F query_suite=default \
   -F languages[]=javascript-typescript
 ```
 
-> If the endpoint returns `404` because the repo isn't yet enrolled in GHAS for public repos, open `https://github.com/johansabent/ticto-outlier-lp/settings/security_analysis` and click **Enable** under *Code scanning* → *Default setup*. Public repos get GHAS free tier.
+> If the endpoint returns `404` because the repo isn't yet enrolled in GHAS for public repos, open `https://github.com/johansabent/ticto-ebulicao-lp/settings/security_analysis` and click **Enable** under *Code scanning* → *Default setup*. Public repos get GHAS free tier.
 
 - [ ] **Step 4: Create issue + PR templates**
 
@@ -3734,16 +3383,16 @@ Expected within 1–2 minutes: Claude comments on the issue with an acknowledgem
 pnpm test
 ```
 
-Expected: all tests from Tasks 5–13 pass. Count test cases; confirm the mental model matches spec §8.2:
-- env: 6 cases
+Expected: all tests from Tasks 5–13 pass. Count test cases; confirm the mental model matches:
+- env: 5 cases
 - logger: 4 cases
-- yayforms-fields: 3 cases
-- webhook-auth: 8 cases
-- utm-mapping: 4 cases
+- typeform-fields: 5 cases
+- webhook-auth: 7 cases
+- utm-mapping: 7 cases
 - datacrazy: 5 cases
 - attribution: 7 cases
 
-Total ≥ 37 unit cases.
+Total ≥ 40 unit cases.
 
 - [ ] **Step 2: Optional coverage instrumented run**
 
@@ -3775,26 +3424,26 @@ If nothing needed to be added, skip the commit.
 - [ ] **Step 1: Write `README.md` (overwrite the `create-next-app` default)**
 
 ```markdown
-# Outlier Experience — Landing Page
+# Ebulição × Ticto — Landing Page
 
 > Teste técnico para Gerente de Automações @ Ticto — 2026-04-15.
 
-[![CI](https://github.com/johansabent/ticto-outlier-lp/actions/workflows/ci.yml/badge.svg)](https://github.com/johansabent/ticto-outlier-lp/actions/workflows/ci.yml)
-[![E2E](https://github.com/johansabent/ticto-outlier-lp/actions/workflows/e2e.yml/badge.svg)](https://github.com/johansabent/ticto-outlier-lp/actions/workflows/e2e.yml)
+[![CI](https://github.com/johansabent/ticto-ebulicao-lp/actions/workflows/ci.yml/badge.svg)](https://github.com/johansabent/ticto-ebulicao-lp/actions/workflows/ci.yml)
+[![E2E](https://github.com/johansabent/ticto-ebulicao-lp/actions/workflows/e2e.yml/badge.svg)](https://github.com/johansabent/ticto-ebulicao-lp/actions/workflows/e2e.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Live demo
 
-- **Produção:** https://ticto-outlier-lp.vercel.app
-- **Repo:** https://github.com/johansabent/ticto-outlier-lp
+- **Produção:** https://ticto-ebulicao-lp.vercel.app
+- **Repo:** https://github.com/johansabent/ticto-ebulicao-lp
 
 ### URL de teste parametrizada
 
 ```
-https://ticto-outlier-lp.vercel.app/?utm_source=linkedin&utm_medium=organic&utm_campaign=outlier2025&utm_content=hero-cta&utm_term=evento-presencial&sck=abc123&src=review
+https://ticto-ebulicao-lp.vercel.app/?utm_source=google&utm_medium=cpc&utm_campaign=ebulicao2026&utm_content=banner&utm_term=raffle&sck=testclick&src=lp
 ```
 
-Os 7 parâmetros são capturados no first-touch, persistidos em localStorage e repassados até o CRM Datacrazy.
+Os 7 parâmetros são capturados no first-touch, persistidos em localStorage e repassados via Typeform `hidden` fields até o CRM Datacrazy.
 
 ### Screencast (≤ 2 min)
 
@@ -3805,7 +3454,7 @@ https://youtu.be/<SCREENCAST_ID>
 
 1. [Quick start](#quick-start)
 2. [Stack e racional](#stack-e-racional)
-3. [Integração direta (YayForms → Datacrazy)](#integração-direta-yayforms--datacrazy)
+3. [Integração direta (Typeform → Datacrazy)](#integração-direta-typeform--datacrazy)
 4. [Mapeamento UTM → Datacrazy (3 camadas)](#mapeamento-utm--datacrazy-3-camadas)
 5. [First-touch attribution com re-injeção](#first-touch-attribution-com-re-injeção)
 6. [Dificuldades encontradas](#dificuldades-encontradas)
@@ -3819,7 +3468,7 @@ Pré-requisitos: Node.js 24 LTS (`.node-version`), pnpm 9, conta Vercel (para `v
 
 ```bash
 pnpm install
-cp .env.example .env.local    # preencher DATACRAZY_API_TOKEN + YAYFORMS_*
+cp .env.example .env.local    # preencher DATACRAZY_API_TOKEN + TYPEFORM_WEBHOOK_SECRET
 # ou: vercel link && vercel env pull .env.local
 pnpm dev                      # http://localhost:3000
 pnpm test                     # unit (Vitest)
@@ -3830,18 +3479,19 @@ pnpm e2e                      # Playwright com Datacrazy mockado
 
 - **Next.js ^16.2** (App Router, `proxy.ts`, async Request APIs).
 - **Node.js 24 LTS** em **Vercel Fluid Compute** — `node:crypto` nativo para HMAC; timeout 300s cobre retries.
-- **Tailwind CSS ^4** (CSS-first via `@theme`), **shadcn/ui v4** (Radix + `data-slot`).
+- **Tailwind CSS ^4** (CSS-first via `@theme`), design tokens portados do Teste_dev (Tomato Grotesk + Space Grotesk, brand-cyan `#5bbed9`).
+- **`@typeform/embed-react` ^4** — Widget inline com `hidden` prop para UTM passthrough.
 - **pnpm** — cache nativo na Vercel.
 - **Zod** para validação fail-fast de env vars no boot.
 - **Playwright ^1.59** para E2E; **Vitest** para unit. CI no GitHub Actions. Deploy via integração GitHub ↔ Vercel.
 
 São os defaults estáveis de 2026 — escolhi não experimentar com `cacheComponents`, `vercel.ts` ou middleware alternativo porque a LP é essencialmente estática e o ganho não justifica complexidade no escopo de 72h.
 
-## Integração direta (YayForms → Datacrazy)
+## Integração direta (Typeform → Datacrazy)
 
-A Ticto pode integrar YayForms ao Datacrazy via Zapier, Make ou n8n — são ferramentas legítimas. Para este teste escolhi o caminho direto: um Route Handler Next.js (`src/app/api/lead/route.ts`) recebe o webhook, valida autenticação, transforma o payload e chama a REST API do Datacrazy. É uma escolha de engenharia pragmática — controle total, latência mínima, falhas visíveis em `vercel logs`, zero vendor lock-in na rota crítica.
+A Ticto pode integrar Typeform ao Datacrazy via Zapier, Make ou n8n — são ferramentas legítimas. Para este teste escolhi o caminho direto: um Route Handler Next.js (`src/app/api/lead/route.ts`) recebe o webhook, valida autenticação HMAC SHA-256 (`typeform-signature` header, base64), transforma o payload e chama a REST API do Datacrazy. É uma escolha de engenharia pragmática — controle total, latência mínima, falhas visíveis em `vercel logs`, zero vendor lock-in na rota crítica.
 
-**Auth do webhook:** decidido via day-0 spike (ver `docs/decisions/2026-04-15-webhook-auth.md`). A implementação em `src/lib/webhook-auth.ts` cobre os 3 modos defensáveis (HMAC SHA256, shared secret em header, secret no path), selecionados via env var `WEBHOOK_AUTH_MODE`.
+**Auth do webhook:** confirmado via day-0 spike (ver `docs/decisions/2026-04-16-typeform-webhook-auth.md`). Typeform oferece apenas HMAC — um único modo, sem branching de `WEBHOOK_AUTH_MODE`. Signature header: `typeform-signature: sha256=<base64>`. A implementação em `src/lib/webhook-auth.ts` inclui replay window de ±5 minutos via `form_response.submitted_at`.
 
 ## Mapeamento UTM → Datacrazy (3 camadas)
 
@@ -3851,35 +3501,35 @@ A REST API pública do Datacrazy (`POST /api/v1/leads`) não documenta campos cu
 - **`sourceReferral.sourceUrl`** preserva a URL completa com todas as query strings (auditoria).
 - **`notes`** contém JSON estruturado com todos os 7 params + `landing_page` + `captured_at` — parseável downstream, legível humanamente.
 
-Essa decisão prioriza preservação do dado bruto sobre inventar estrutura em campos que não sei se o CRM indexa.
+Essa decisão prioriza preservação do dado bruto sobre inventar estrutura em campos que não sei se o CRM indexa. **`tags` não é usado** — explicitamente rejeitado no spec.
 
 ## First-touch attribution com re-injeção
 
-O atributo `data-yf-transitive-search-params` do YayForms lê apenas da URL atual — quebra para usuários que voltam sem query string. O componente `src/components/utm-rehydrator.tsx` salva os 7 parâmetros em `localStorage` na primeira visita; em visitas sem UTMs na URL, reescreve via `history.replaceState` **antes do paint** (via `useLayoutEffect`), garantindo que o iframe do YayForms leia a URL já hidratada.
+O `@typeform/embed-react` Widget aceita `hidden` prop — passa diretamente os 7 UTMs para `form_response.hidden` na submissão. O componente `src/components/utm-rehydrator.tsx` salva os 7 parâmetros em `localStorage` na primeira visita; em visitas sem UTMs na URL, reescreve via `history.replaceState` **antes do paint** (via `useLayoutEffect`). O hook `useAttribution()` lê o localStorage e alimenta o Widget.
 
 Trade-off consciente: URL copiada de um retorno contém os UTMs da primeira visita. O ganho (atribuição first-touch sem forkar a lib) vale o custo.
 
 ## Dificuldades encontradas
 
-1. **Formato de auth do webhook YayForms não documentado.** Docs silentes sobre nome do header e formato da assinatura. Resolvi com day-0 spike — configurei o webhook para um endpoint de inspeção (webhook.site), submeti o form e decidi o modo com base nos headers reais recebidos. Decisão em `docs/decisions/2026-04-15-webhook-auth.md`.
+1. **Pivot de YayForms para Typeform.** Reviewer request no dia-1. Day-0 spike foi refeito para Typeform; ADR em `docs/decisions/2026-04-16-typeform-webhook-auth.md`. Principal diferença técnica: encoding é **base64** (não hex) e a assinatura usa o prefixo `sha256=`.
 
 2. **Datacrazy sem campo customizado genérico.** Schema REST público não expõe `customFields` / `additionalFields`. Resolvi com mapping 3-layer em campos nativos.
 
-3. **Trial YayForms de 7 dias.** Criei a conta apenas após o deploy estar pronto, para maximizar a janela útil. Screencast grava evidência imutável caso o form expire antes da avaliação.
+3. **Typeform PAT exposto durante spike.** Regenerado via Typeform → Settings → Personal Tokens → `openclaw-automation`. PAT não é necessário em runtime — apenas para Management API.
 
-4. **Figma MCP rate limit (~200 calls/dia).** Extraí tokens em uma única chamada `get_design_context` para `docs/design-tokens.json`, então todo o design foi construído a partir desse cache — zero chamadas MCP durante a iteração final.
+4. **Design portado de Teste_dev.** Figma MCP foi lido inline; design tokens, componentes e assets foram portados diretamente de `D:/Users/Johan/Dev Projects/Teste_dev/` — zero re-extração, zero rate limit.
 
 ## Limitações conscientes (escopo 72h)
 
-1. **Dedup durável de webhooks:** em produção eu usaria Upstash Redis via Marketplace Vercel armazenando `yayforms_submission_id` com TTL. Aqui, a idempotência é delegada ao Datacrazy — a plataforma identifica leads por `nome + email` ou `nome + telefone`, então retries convergem para o mesmo lead no CRM. É comportamento documentado do alvo, não silêncio.
+1. **Dedup durável de webhooks:** em produção eu usaria Upstash Redis via Marketplace Vercel armazenando `form_response.token` com TTL. Aqui, a idempotência é delegada ao Datacrazy — a plataforma identifica leads por `nome + email` ou `nome + telefone`, então retries convergem para o mesmo lead no CRM.
 
-2. **Observabilidade além de Vercel Logs:** em produção, Sentry ou equivalente. Aqui, logs JSON estruturados via `console.log` — auditáveis em `vercel logs`, zero custo adicional. Campos + error_class em `src/lib/logger.ts`.
+2. **Observabilidade além de Vercel Logs:** em produção, Sentry ou equivalente. Aqui, logs JSON estruturados via `console.log` — auditáveis em `vercel logs`, zero custo adicional.
 
-3. **CSP específica:** começar com CSP rigorosa sem quebrar embed + analytics exige iteração. Enviei com security headers básicos (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS). CSP iria em segunda rodada.
+3. **CSP específica:** começar com CSP rigorosa sem quebrar embed + analytics exige iteração. Enviei com security headers básicos (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS).
 
 ## Testes
 
-- **Unit (Vitest)** — `pnpm test`: 7 arquivos em `tests/unit/`, cobrindo env, logger, yayforms-fields, webhook-auth, utm-mapping, datacrazy, attribution.
+- **Unit (Vitest)** — `pnpm test`: 7 arquivos em `tests/unit/`, cobrindo env, logger, typeform-fields, webhook-auth, utm-mapping, datacrazy, attribution. Fixture canônica em `tests/fixtures/typeform-webhook.json`.
 - **E2E (Playwright)** — `pnpm e2e`: `tests/e2e/lead-flow.spec.ts`, Datacrazy **mockado** via `page.route` para evitar flakiness e respeitar rate limits em CI. Smoke live é manual (screencast).
 - **Secret-leak check** — `pnpm check:secrets`: varre `.next/static` + `out` por tokens server-only. Rodado em CI.
 
@@ -3955,15 +3605,15 @@ Wait for Vercel to post the Preview URL in the PR.
 
 - [ ] **Step 2 (HUMAN): Run the smoke against live Datacrazy**
 
-Open the Preview URL with the URL-parametrized query string (the same one that ships in README). Fill the form with real test data (`Teste QA`, a throwaway email you control, a valid phone). Submit.
+Open the Preview URL with the URL-parametrized query string (the same one that ships in README). Fill the form with real test data (`Teste QA`, `12345678900`, a throwaway email you control, a valid phone, select `Sim` for vende online). Submit.
 
 - [ ] **Step 3 (HUMAN): Record the screencast**
 
 Using OBS / Screen Studio / any recorder:
 
 1. Open the Preview URL with all 7 UTMs in the query string. Confirm URL bar visible.
-2. Fill the form end-to-end. Click submit.
-3. Show the YayForms success screen (or whatever confirmation it renders).
+2. Fill the form end-to-end (all 5 fields). Click submit.
+3. Show the Typeform success screen (thank you page).
 4. Switch to Datacrazy CRM (`https://crm.datacrazy.io`). Show the new lead list → click into the lead.
 5. Show:
    - Name / email / phone fields populated
@@ -3983,7 +3633,7 @@ Edit `README.md`, replace `https://youtu.be/<SCREENCAST_ID>` with the real URL.
 gh pr merge --squash --delete-branch
 ```
 
-Wait for the production deploy to complete. Visit `https://ticto-outlier-lp.vercel.app/` — confirm the LP loads and the form still works end-to-end on production.
+Wait for the production deploy to complete. Visit `https://ticto-ebulicao-lp.vercel.app/` — confirm the LP loads and the form still works end-to-end on production.
 
 - [ ] **Step 6: Final commit on main** (if README edit was made on `main`)
 
@@ -4006,13 +3656,14 @@ Confirm each item ticked off:
 - [ ] README com §12.1–§12.8
 - [ ] `pnpm check:secrets` passando
 - [ ] `pnpm test` + `pnpm e2e` passando em CI
-- [ ] `docs/decisions/2026-04-15-webhook-auth.md` presente
+- [ ] `docs/decisions/2026-04-16-typeform-webhook-auth.md` presente
+- [ ] Typeform webhook secret rotacionado (não usar `***REDACTED-SECRET***` em produção)
 
 - [ ] **Step 8: Submit the deliverable**
 
 Reply to the Ticto email/thread with the 5 required items (briefing §4):
-1. URL published: `https://ticto-outlier-lp.vercel.app`
-2. GitHub repo: `https://github.com/johansabent/ticto-outlier-lp`
+1. URL published: `https://ticto-ebulicao-lp.vercel.app`
+2. GitHub repo: `https://github.com/johansabent/ticto-ebulicao-lp`
 3. Parametrized test URL: (copy from README)
 4. Screencast link: (YouTube/Vimeo unlisted)
 5. README: link to the README section of the repo
@@ -4027,19 +3678,21 @@ Running the spec-coverage checklist against the plan:
 
 | Spec item | Covered by |
 |---|---|
-| LP in Next.js 16 pixel-perfect to Figma | Tasks 3, 16, 17 |
-| YayForms inline embed | Tasks 1, 15, 17 |
-| 7 UTM/sck/src capture + transmission | Tasks 13, 14, 15, 19 |
+| LP in Next.js 16 matching Figma/Teste_dev design | Tasks 3, 16, 17 |
+| Typeform inline embed (`@typeform/embed-react` Widget) | Tasks 1, 15, 17 |
+| 7 UTM/sck/src capture + transmission via hidden fields | Tasks 13, 14, 15, 19 |
 | Datacrazy integration via Route Handler | Tasks 10, 11 |
-| Multi-mode webhook auth (hmac / shared_secret / secret_path) | Tasks 1, 8, 11 |
+| Typeform HMAC webhook auth (single mode, sha256=base64) | Tasks 1, 8, 11 |
 | 3-layer UTM mapping (source / sourceUrl / notes-JSON) | Task 9 |
+| No tags field (rejected decision preserved) | Task 9 |
 | Env validation fail-fast | Task 5 |
 | PII redaction in logs | Task 6 |
 | First-touch with useLayoutEffect + history.replaceState | Tasks 13, 14 |
 | Security headers via proxy.ts | Task 12 |
 | check:secrets pre-push gate | Tasks 3, 20 |
-| Vitest unit tests for env, logger, fields, auth, mapping, datacrazy, attribution | Tasks 5–10, 13, 23 |
+| Vitest unit tests for env, logger, typeform-fields, webhook-auth, utm-mapping, datacrazy, attribution | Tasks 5–10, 13, 23 |
 | Playwright E2E with Datacrazy mocked | Task 19 |
+| Canonical fixture at tests/fixtures/typeform-webhook.json | Task 1 |
 | GitHub repo public + topics + labels | Task 2 |
 | Vercel deploy via GitHub integration | Task 2 |
 | CI workflow (typecheck / lint / test / build / secrets) | Task 20 |
@@ -4049,8 +3702,8 @@ Running the spec-coverage checklist against the plan:
 | CodeQL default setup | Task 22 |
 | README with all §12.1–§12.8 + briefing deliverables | Task 24 |
 | Screencast recorded + linked | Task 25 |
-| Day-0 spike as BLOCKER for webhook-auth | Task 1 → Task 8 |
-| Figma MCP one-shot (rate-limit-aware) | Task 16 |
+| Day-1 Typeform spike as BLOCKER for webhook-auth | Task 1 → Task 8 |
+| Design assets ported from Teste_dev (no Figma MCP rate-limit risk) | Task 16 |
 | CVE silence (no specific CVE cited in README) | Task 24 |
 | Dependabot OFF | not enabled (Task 2 only creates labels; no Dependabot PR) |
 

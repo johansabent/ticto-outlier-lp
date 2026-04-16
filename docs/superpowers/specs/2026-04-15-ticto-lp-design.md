@@ -1,3 +1,5 @@
+> **SUPERSEDED IN PART — 2026-04-16:** Platform changed from YayForms to Typeform. Product name changed from "Outlier Experience" to "Ebulição". The implementation plan at `docs/superpowers/plans/2026-04-15-ticto-lp-implementation.md` is the canonical source for current state. This spec is retained as historical context only.
+
 # Design Spec — LP Outlier Experience (Teste Técnico Ticto) — v2
 
 **Data:** 2026-04-15
