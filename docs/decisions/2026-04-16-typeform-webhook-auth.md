@@ -30,18 +30,19 @@ Platform change: YayForms → **Typeform**. Reviewer request. Typeform has stron
 
 `lib/typeform-fields.ts` keys by `ref` (stable across form edits), never by ID (can change).
 
-### Hidden fields (7 UTMs)
+### Hidden fields (7 UTMs + `landing_page` = 8 total)
 
 Declared in Typeform form config — required before any URL param can populate them:
 - `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` (enabled via Typeform's "Source tracking" toggles)
 - `sck`, `src` (declared as Custom URL parameters)
+- `landing_page` (declared as Custom URL parameter) — holds the full visitor landing URL so the server-to-server webhook can reconstruct attribution without relying on a `Referer` header (Typeform webhooks are server-to-server; `Referer` is absent or points at Typeform's own CDN, not the visitor's landing page)
 
-URL params matching these names are populated into `form_response.hidden` on submission.
+URL params matching these names are populated into `form_response.hidden` on submission. The frontend's `@typeform/embed-react` `<Widget>` passes all 8 keys via the `hidden` prop, sourced from the first-touch localStorage attribution record.
 
 ### Webhook configuration used for spike
 
 - URL: `https://webhook.site/bd40a1f6-7825-4772-996c-067a26de806b`
-- Secret: `***REDACTED-SECRET***` (spike-only; rotates to production value before shipping — update in Typeform webhook config + Vercel env `TYPEFORM_WEBHOOK_SECRET`)
+- Secret: `<REDACTED — rotated 2026-04-16; active value lives in Vercel env `TYPEFORM_WEBHOOK_SECRET` and local `.env.local` only. The original spike value was burned when it was committed to a public repo and must never be reused.>`
 - Format: **V2** (`event_types: { form_response: true }`)
 - SSL verification: enabled
 - Webhook tag: `phoenix:1776372234706`
@@ -117,9 +118,9 @@ import { createHmac } from "node:crypto";
 import fixture from "./fixtures/typeform-webhook.json";
 
 const body = JSON.stringify(fixture);
-const secret = "***REDACTED-SECRET***";
+const secret = process.env.TYPEFORM_WEBHOOK_SECRET!; // test env loads a non-production fixture value; never hardcode the live secret in source
 const expected = "sha256=" + createHmac("sha256", secret).update(body).digest("base64");
-// expected matches the header captured here when body is serialized identically
+// expected matches the header captured here when body is serialized identically under the same secret
 ```
 
 **Critical:** Typeform sends the exact bytes it generated; our handler must read `await req.text()` BEFORE `JSON.parse` and HMAC-verify against those bytes. Any reserialization (e.g., a middleware re-stringifying) will break verification.
@@ -232,7 +233,7 @@ Dependency to add: `@typeform/embed-react` (production dep).
 
 ## Security notes
 
-- Webhook secret `***REDACTED-SECRET***` is **spike-only**. Rotate before production deploy:
+- The original spike webhook secret was committed to this public repo and is **burned**. It was rotated on 2026-04-16 — the active value lives only in Vercel env `TYPEFORM_WEBHOOK_SECRET` (Production + Preview) and local `.env.local`. Do **not** paste it back into any committed file, test fixture, or chat. Rotation procedure for the future:
   1. Generate new secret (crypto-random, ≥32 chars)
   2. Update in Typeform webhook config (keep webhook.site URL during rollout, then swap to prod URL)
   3. Set `TYPEFORM_WEBHOOK_SECRET` in Vercel Production + Preview env

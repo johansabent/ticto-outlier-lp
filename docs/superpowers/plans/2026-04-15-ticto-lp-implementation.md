@@ -730,6 +730,8 @@ Expected: Vercel triggers a Preview deployment on push (observable at `https://v
 
 **Dependencies:** Task 1 (`TYPEFORM_WEBHOOK_SECRET` + `TYPEFORM_FORM_ID` confirmed by spike), Task 3 (project exists).
 
+> **One-time Typeform UI action (manual, done outside code):** Open form `FbFMsO5x` in the Typeform editor → Settings → Hidden fields. Confirm **8 hidden fields** are declared: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck`, `src`, `landing_page`. Typeform silently drops any hidden field that isn't declared in advance, so `landing_page` MUST exist before Task 15 ships. This is the authoritative source of the visitor's landing URL on the webhook side (the server-to-server POST has no useful `Referer` header).
+
 - [ ] **Step 1: Draft `.env.example` with every required variable**
 
 Create `.env.example`:
@@ -743,7 +745,9 @@ DATACRAZY_API_TOKEN=
 # ---------------------------------------------------------------------------
 # Typeform webhook secret (server-only).
 # Set in Typeform → Connect → Webhooks → Edit → Secret.
-# Rotate before production deploy (spike used "***REDACTED-SECRET***").
+# The original spike secret was committed to the public repo and BURNED;
+# the active value was rotated on 2026-04-16 and lives only in Vercel env
+# vars and this gitignored file. Never paste it into committed source.
 # ---------------------------------------------------------------------------
 TYPEFORM_WEBHOOK_SECRET=
 
@@ -1336,7 +1340,11 @@ import { createHmac } from 'node:crypto';
 import { verifyTypeformSignature } from '@/lib/webhook-auth';
 import fixtureRaw from '../fixtures/typeform-webhook.json';
 
-const SECRET = '***REDACTED-SECRET***';
+// Test-only value. Unrelated to the production webhook secret, which lives only
+// in Vercel env vars + local `.env.local`. This string is self-contained: the
+// test computes its own "expected" signature with the same literal, so the value
+// never needs to match anything in the outside world.
+const SECRET = 'typeform-webhook-test-fixture-secret';
 
 // Compute expected signature the same way Typeform does
 function makeSignature(body: string, secret: string): string {
@@ -2092,8 +2100,14 @@ export async function POST(req: Request) {
     utm_keys_present: utmKeysPresent,
   });
 
-  // PII-safe landing URL: prefer Referer, fall back to site URL
-  const landingUrl = req.headers.get('referer') ?? env.NEXT_PUBLIC_SITE_URL ?? '';
+  // Landing URL: read from the submitter-declared `landing_page` hidden field.
+  // Typeform webhooks are server-to-server so `Referer` is either absent or points
+  // at a Typeform CDN, never at the visitor's landing page. `form_response.hidden.landing_page`
+  // was injected by <TypeformEmbed> from first-touch localStorage, so it carries the
+  // real visitor URL including query string. Fall back to NEXT_PUBLIC_SITE_URL only
+  // if the hidden field is absent (legacy submission or Typeform form config regression).
+  const landingUrl =
+    body.form_response.hidden?.landing_page ?? env.NEXT_PUBLIC_SITE_URL ?? '';
 
   // 6. Build Datacrazy payload
   const datacrazyPayload = buildDatacrazyPayload({
@@ -2422,7 +2436,17 @@ export function UTMRehydrator() {
     const stored = readStoredAttribution();
 
     if (hasUrlUtms && !stored) {
-      saveAttribution(fromUrl, { landingPath: window.location.pathname, capturedAt });
+      // Use the full href (pathname + search + hash) so Datacrazy's sourceReferral.sourceUrl
+      // and Typeform's landing_page hidden field both carry the real landing URL.
+      saveAttribution(fromUrl, { landingPath: window.location.href, capturedAt });
+      return;
+    }
+
+    // First-touch attribution must also fire for organic visitors with no UTMs,
+    // otherwise `landing_page` is never written and the webhook falls back to
+    // NEXT_PUBLIC_SITE_URL. Capture the bare landing URL on first visit too.
+    if (!hasUrlUtms && !stored) {
+      saveAttribution({}, { landingPath: window.location.href, capturedAt });
       return;
     }
 
@@ -2478,14 +2502,25 @@ This is a production dependency (needed in the client bundle).
 ```tsx
 'use client';
 import { Widget } from '@typeform/embed-react';
-import { useAttribution } from '@/lib/attribution';
+import { useAttribution, UTM_KEYS } from '@/lib/attribution';
+
+// Typeform silently drops hidden fields that aren't declared in the form config.
+// Form FbFMsO5x declares exactly 8 hidden fields: the 7 UTM keys + `landing_page`.
+// Anything else (e.g. `captured_at`, which we persist locally for audit) must be
+// stripped before handing the object to <Widget>.
+const HIDDEN_KEYS = [...UTM_KEYS, 'landing_page'] as const;
 
 export function TypeformEmbed({ formId }: { formId: string }) {
-  const { utms } = useAttribution(); // reads localStorage first-touch, returns Partial<Record<UtmKey, string>>
+  const { utms } = useAttribution(); // reads localStorage first-touch (Attribution object)
+  const hidden: Record<string, string> = {};
+  for (const k of HIDDEN_KEYS) {
+    const v = utms[k];
+    if (typeof v === 'string' && v.length > 0) hidden[k] = v;
+  }
   return (
     <Widget
       id={formId}
-      hidden={utms}            // 7 UTM keys passed as Typeform hidden fields
+      hidden={hidden}          // 7 UTM keys + landing_page, all string-valued
       inlineOnMobile
       opacity={0}
       className="w-full h-[600px]"
@@ -3657,7 +3692,7 @@ Confirm each item ticked off:
 - [ ] `pnpm check:secrets` passando
 - [ ] `pnpm test` + `pnpm e2e` passando em CI
 - [ ] `docs/decisions/2026-04-16-typeform-webhook-auth.md` presente
-- [ ] Typeform webhook secret rotacionado (não usar `***REDACTED-SECRET***` em produção)
+- [ ] Typeform webhook secret rotacionado — o valor original do spike foi comprometido ao ser commitado no repo público e NÃO pode voltar a ser usado; valor ativo vive apenas em Vercel env + `.env.local` local
 
 - [ ] **Step 8: Submit the deliverable**
 
