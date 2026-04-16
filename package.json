@@ -1,0 +1,52 @@
+{
+  "name": "ticto-outlier-lp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "check:secrets": "node scripts/check-secrets.mjs"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.4.0",
+    "@vercel/functions": "^3.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
+    "next": "^16.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "shadcn": "^4.2.0",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^16.2.0",
+    "jsdom": "^25.0.1",
+    "tailwindcss": "^4.0.0",
+    "tw-animate-css": "^1.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
