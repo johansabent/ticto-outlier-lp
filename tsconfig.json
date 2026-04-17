@@ -31,5 +31,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "typeform_pkg",
+    "typeform_embed_pkg",
+    ".npm-cache",
+    ".pnpm-cache"
+  ]
 }
