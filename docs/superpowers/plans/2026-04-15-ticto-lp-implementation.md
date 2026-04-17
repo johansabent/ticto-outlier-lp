@@ -1,6 +1,8 @@
 # Ticto LP Ebulição Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **For automated reviewers (CodeRabbit / Codex / Gemini):** This is a forward-looking implementation plan, not documentation of current code. Every `- [ ]` step describes **future work** to be applied by a subagent; the repo's current state may legitimately diverge from any example shown here until the matching task is merged. Do **not** flag "drift between this plan and the code" as an actionable finding — drift is expected by design. Only flag issues where the plan is **internally inconsistent** (e.g. a code sample references an undefined symbol within its own example, or two steps contradict each other).
 
 **Goal:** Deploy a production landing page (Ticto × Ebulição — iPhone 16 Pro raffle, Rafa Prado event) that renders a Typeform embed, captures 7 tracking params (UTM + sck + src), forwards submissions to Datacrazy CRM via a server-side webhook handler, and ships with full CI, E2E coverage (Datacrazy mocked), screencast evidence, and a public GitHub repo — end-to-end within a 72h window.
 
