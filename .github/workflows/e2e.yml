@@ -3,6 +3,9 @@ name: E2E (Preview)
 on:
   deployment_status:
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     if: github.event.deployment_status.state == 'success' && github.event.deployment.environment != 'Production'
@@ -27,7 +30,10 @@ jobs:
 
       - name: Run E2E against preview URL
         env:
-          PLAYWRIGHT_TEST_BASE_URL: ${{ github.event.deployment_status.target_url }}
+          # environment_url is the canonical accessible URL for the deployed
+          # environment; target_url is legacy (logs-oriented) and may be empty.
+          # Vercel's own example for this trigger uses environment_url too.
+          PLAYWRIGHT_TEST_BASE_URL: ${{ github.event.deployment_status.environment_url }}
         run: pnpm e2e
 
       - name: Upload Playwright report
