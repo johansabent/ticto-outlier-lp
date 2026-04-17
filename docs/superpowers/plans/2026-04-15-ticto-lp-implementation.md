@@ -725,7 +725,7 @@ function onlyClient(path) {
   return path.includes(`${'.next'}/static`) || path.startsWith('out');
 }
 
-async function main() {
+async function clientBundleScan() {
   const hits = [];
   for (const root of SCAN_ROOTS) {
     const files = await walk(root);
@@ -738,6 +738,11 @@ async function main() {
       }
     }
   }
+  return hits;
+}
+
+async function main() {
+  const hits = await clientBundleScan();
   if (hits.length > 0) {
     console.error('SECRET LEAK DETECTED in client bundle:');
     for (const h of hits) console.error(`  ${h.file} -> ${h.key}`);
