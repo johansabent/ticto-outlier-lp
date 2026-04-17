@@ -20,7 +20,10 @@
 
 ## Core Invariants
 - Secrets stay server-side. Do not expose integration or auth secrets to client code or public env vars.
-- `NEXT_PUBLIC_SITE_URL` is the only intentionally public env var in the current design. Treat any new `NEXT_PUBLIC_*` var as suspicious unless the spec explicitly requires it.
+- Intentionally public env vars (allowlist — do not expand without a documented spec requirement):
+  - `NEXT_PUBLIC_SITE_URL` — base URL used in OG metadata and canonical links.
+  - `NEXT_PUBLIC_TYPEFORM_FORM_ID` — Typeform form ID (e.g. `FbFMsO5x`), intentionally public because the `@typeform/embed-react` widget mounts client-side and requires the form ID at render time. The same value also lives server-side as `TYPEFORM_FORM_ID` for webhook validation — that is by design, not a duplication bug.
+  - Any other `NEXT_PUBLIC_*` var is suspicious unless the plan explicitly requires it and this allowlist is updated in the same PR.
 - `proxy.ts` is for security headers only. Do not move request auth, body validation, or business logic into `proxy.ts`.
 - Keep webhook and outbound integration auth checks in server-side route handlers or server-only libraries.
 - Preserve PII redaction in logs. Emails must be masked like `j***@domain.com`; phone numbers must be masked like `***-1234`.
