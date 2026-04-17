@@ -51,6 +51,15 @@ export function redactEmail(raw: string): string {
   return `${input[0]}***${input.slice(at)}`;
 }
 
+export function redactName(raw: string): string {
+  // Matches the email redaction shape (`j***@domain.com`): first char + `***`.
+  // Previous `${firstName} ***` pattern leaked the full first name and — for
+  // single-word `nome` submissions — the entire name.
+  const s = (raw ?? '').trim();
+  if (!s) return '';
+  return `${s[0]}***`;
+}
+
 export function redactPhone(raw: string): string {
   if (!raw) return '';
   const digits = raw.replace(/\D/g, '');

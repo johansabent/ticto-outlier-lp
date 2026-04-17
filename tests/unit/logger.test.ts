@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { logger, redactEmail, redactPhone, type LeadEvent } from '@/lib/logger';
+import { logger, redactEmail, redactName, redactPhone, type LeadEvent } from '@/lib/logger';
 
 describe('lib/logger', () => {
   beforeEach(() => {
@@ -30,6 +30,18 @@ describe('lib/logger', () => {
     expect(redactPhone('5')).toBe('***-****');
     expect(redactPhone('12')).toBe('***-****');
     expect(redactPhone('123')).toBe('***-****');
+  });
+
+  it('redactName emits first-char + `***` and never the full name', () => {
+    // Pre-fix handler emitted `${first} ***` which leaked the first name,
+    // and for single-word `nome` submissions leaked the entire name. The
+    // new mask (first char + `***`) matches redactEmail's shape and
+    // satisfies the AGENTS.md PII-redaction invariant.
+    expect(redactName('João Silva')).toBe('J***');
+    expect(redactName('João')).toBe('J***');
+    expect(redactName('  Maria  ')).toBe('M***');
+    expect(redactName('')).toBe('');
+    expect(redactName('   ')).toBe('');
   });
 
   it('redactEmail trims surrounding whitespace before redacting', () => {

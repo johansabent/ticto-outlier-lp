@@ -5,7 +5,7 @@ import { verifyTypeformSignature } from '@/lib/webhook-auth';
 import { parseAnswers, type TypeformAnswer } from '@/lib/typeform-fields';
 import { mapUtms, buildDatacrazyPayload } from '@/lib/utm-mapping';
 import { postLead } from '@/lib/datacrazy';
-import { logger, redactEmail, redactPhone } from '@/lib/logger';
+import { logger, redactEmail, redactName, redactPhone } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,16 +41,49 @@ function sanitizeLandingUrl(
   }
 }
 
+type BodyReadResult =
+  | { ok: true; bytes: Buffer }
+  | { ok: false; tooLarge: true; bytesRead: number };
+
+async function readBodyWithCap(
+  req: Request,
+  maxBytes: number,
+): Promise<BodyReadResult> {
+  // Stream the body and bail as soon as we exceed maxBytes, before the full
+  // payload materializes in memory. Fixes the P1 codex finding: the prior
+  // `await req.arrayBuffer()` + post-check allowed an unauthenticated
+  // attacker to force allocation of a full body whose `content-length` was
+  // missing or mis-declared (chunked transfer).
+  const reader = req.body?.getReader();
+  if (!reader) return { ok: true, bytes: Buffer.alloc(0) };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return { ok: false, tooLarge: true, bytesRead: total };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return { ok: true, bytes: Buffer.concat(chunks.map((c) => Buffer.from(c)), total) };
+}
+
 export async function POST(req: Request) {
   const requestId = newRequestId();
   const t0 = Date.now();
   const serverEnv = getServerEnv();
   const clientEnv = getClientEnv();
 
-  // 0. Body-size guard — rejects oversized uploads before HMAC computation
-  // bills CPU on attacker-controlled bytes. content-length can lie, but any
-  // sane client sets it; bodies that spoof past the check still hit the
-  // same guard via Buffer length below.
+  // 0. Fast-reject via content-length. Belt-and-suspenders on top of the
+  // streaming cap below; lets well-behaved clients fail cheaply.
   const declaredLen = Number(req.headers.get('content-length') ?? '0');
   if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
     logger.warn({
@@ -62,21 +95,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
 
-  // 1. Read raw body bytes BEFORE JSON.parse — HMAC must run on exact bytes.
-  // Buffer.from(arrayBuffer) preserves the exact bytes Typeform signed; a
-  // string round-trip (req.text()) would survive here because our validator
-  // re-encodes to utf8, but Buffer keeps the plan's stated intent explicit
-  // and avoids any future drift if we change the HMAC path.
-  const bodyBytes = Buffer.from(await req.arrayBuffer());
-  if (bodyBytes.byteLength > MAX_BODY_BYTES) {
+  // 1. Read raw body bytes with a streaming cap BEFORE JSON.parse — HMAC must
+  // run on exact bytes. readBodyWithCap streams and aborts as soon as the cap
+  // is exceeded, so an unauthenticated attacker can't force memory allocation
+  // past MAX_BODY_BYTES even with chunked transfer or a missing/spoofed
+  // content-length header.
+  const read = await readBodyWithCap(req, MAX_BODY_BYTES);
+  if (!read.ok) {
     logger.warn({
       event: 'lead.failed',
       request_id: requestId,
       error_class: 'parse_error',
-      error_message: `payload_too_large: actual ${bodyBytes.byteLength}`,
+      error_message: `payload_too_large: streamed ${read.bytesRead}`,
     });
     return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   }
+  const bodyBytes = read.bytes;
 
   // 2. Verify Typeform HMAC signature on exact bytes.
   const sigHeader = req.headers.get('typeform-signature');
@@ -122,6 +156,10 @@ export async function POST(req: Request) {
       answers?: TypeformAnswer[];
       hidden?: Record<string, string>;
       token?: string;
+      // ISO-8601 from Typeform. Used as `capturedAt` for Datacrazy so lead
+      // attribution reflects when the user actually submitted, not when our
+      // webhook happened to run (could be seconds-to-minutes later on retries).
+      submitted_at?: string;
     };
   };
   try {
@@ -170,7 +208,10 @@ export async function POST(req: Request) {
     event: 'lead.mapped',
     request_id: requestId,
     submission_id: body.form_response.token,
-    field_count_mapped: 5,
+    // Derive from actual parsed answers rather than hardcoding 5 — stays
+    // accurate if the field registry grows, and reflects what was truly
+    // extracted (parseAnswers would have already thrown on missing required).
+    field_count_mapped: Object.keys(answers).length,
     utm_keys_present: utmKeysPresent,
   });
 
@@ -186,12 +227,15 @@ export async function POST(req: Request) {
     clientEnv.NEXT_PUBLIC_SITE_URL,
   );
 
-  // 6. Build Datacrazy payload.
+  // 6. Build Datacrazy payload. capturedAt prefers Typeform's submitted_at
+  // (authoritative for lead attribution) and only falls back to wall-clock
+  // if Typeform omits it — matters for retries/delayed webhooks where our
+  // processing time could lag the real submission by minutes.
   const datacrazyPayload = buildDatacrazyPayload({
     answers,
     utms,
     landingUrl,
-    capturedAt: new Date().toISOString(),
+    capturedAt: body.form_response.submitted_at ?? new Date().toISOString(),
   });
 
   // 7. POST to Datacrazy (sync — no waitUntil needed for 72h scope).
@@ -229,7 +273,7 @@ export async function POST(req: Request) {
     timing_ms: crmMs,
     email_hint: redactEmail(answers.email),
     phone_hint: redactPhone(answers.telefone),
-    name_hint: `${answers.nome.split(' ')[0]} ***`,
+    name_hint: redactName(answers.nome),
   });
 
   return NextResponse.json({ ok: true, request_id: requestId }, { status: 200 });
