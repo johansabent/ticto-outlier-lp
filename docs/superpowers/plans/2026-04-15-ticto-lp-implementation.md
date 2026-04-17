@@ -761,12 +761,20 @@ main().catch((e) => {
 
 - [ ] **Step 13.5: Extend `scripts/check-secrets.mjs` to cover source + docs**
 
-The original scanner only walks `.next` + `out`. The 2026-04-15/16 webhook-secret leak lived in `docs/decisions/*.md`, which the scanner would never have seen. Extend it to scan the repo tree for both (a) known burned secret values as a literal deny-list, and (b) secret-shaped tokens by regex. Append the following to `scripts/check-secrets.mjs` and wire it as a second scan phase after the existing client-bundle scan:
+The original scanner only walks `.next` + `out`. The 2026-04-15/16 webhook-secret leak lived in `docs/decisions/*.md`, which the scanner would never have seen. Extend it to scan the repo tree for both (a) known burned secret values as a literal deny-list, and (b) secret-shaped tokens by regex.
+
+Two placements are required (ESM disallows mid-file `import`):
+
+1. **Add one import to the top of `scripts/check-secrets.mjs`**, alongside the existing imports from Step 13:
+
+```javascript
+import { createHash } from 'node:crypto';
+```
+
+2. **Append the following constants, helpers, and `sourceScan()` below the existing `clientBundleScan()`** (same file). Then rewire `main()` as shown after this block so both phases run.
 
 ```javascript
 // Repo-source scan (second phase) — additive to the existing client-bundle check above.
-import { createHash } from 'node:crypto';
-
 // Scans the whole tree except build output / tooling caches / the scanner itself.
 // `scripts/` is in scope — security/build helpers are prime places to accidentally
 // hard-code a token — but the scanner excludes its own file so the deny-list
