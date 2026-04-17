@@ -10,53 +10,94 @@ export type ValidationFailure =
 export type ValidationResult = { valid: true } | { valid: false; reason: ValidationFailure };
 
 export interface VerifyTypeformInput {
-  rawBody: string;
+  // Prefer Buffer — we compute the HMAC over the exact bytes Typeform signed,
+  // so re-serializing a parsed body (e.g. JSON.stringify on req.json() output)
+  // reorders keys and breaks the signature. Accept string for test ergonomics;
+  // Buffer.from(str, 'utf8') runs internally in that case.
+  rawBody: string | Buffer;
   signatureHeader: string | null;
   secret: string;
-  /** Injectable for tests; defaults to Date.now() */
+  // Injectable for tests; defaults to new Date()
   now?: Date;
 }
 
 const SIGNATURE_HEADER_PREFIX = 'sha256=';
-const REPLAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+// Accept a small forward skew so mild clock drift between Typeform and this
+// runtime doesn't reject legitimate payloads.
+const FUTURE_SKEW_MS = 60 * 1000;
+// Typeform retries failed deliveries for up to 24h; we allow 48h to absorb
+// delayed queue processing. Stronger replay protection (event_id dedup) is
+// layered on in the route handler — this window is the outer bound.
+const PAST_WINDOW_MS = 48 * 60 * 60 * 1000;
+const MIN_SECRET_LENGTH = 16;
 
 export function verifyTypeformSignature(input: VerifyTypeformInput): ValidationResult {
   const { rawBody, signatureHeader, secret, now = new Date() } = input;
 
-  // 1. Header presence
-  if (!signatureHeader) return { valid: false, reason: 'hmac_missing' };
+  // Defense-in-depth. Env validation already enforces min-16 in production, so
+  // reaching this branch means a misconfigured caller — throw loudly rather
+  // than silently accept a guessable key.
+  if (!secret || secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(
+      `Typeform webhook secret must be at least ${MIN_SECRET_LENGTH} characters (got ${secret?.length ?? 0})`,
+    );
+  }
 
-  // 2. Format: must start with 'sha256='
+  if (!signatureHeader) return { valid: false, reason: 'hmac_missing' };
   if (!signatureHeader.startsWith(SIGNATURE_HEADER_PREFIX)) {
     return { valid: false, reason: 'hmac_bad_format' };
   }
 
-  // 3. Replay window — check submitted_at before HMAC (fail fast on obvious replays)
-  let submittedAt: Date | null = null;
-  try {
-    const parsed = JSON.parse(rawBody) as { form_response?: { submitted_at?: string } };
-    const ts = parsed?.form_response?.submitted_at;
-    if (ts) submittedAt = new Date(ts);
-  } catch {
-    // body not parseable yet — HMAC will fail anyway
-  }
-  if (!submittedAt || isNaN(submittedAt.getTime())) {
-    return { valid: false, reason: 'replay_window_exceeded' };
-  }
-  if (Math.abs(now.getTime() - submittedAt.getTime()) > REPLAY_WINDOW_MS) {
-    return { valid: false, reason: 'replay_window_exceeded' };
-  }
-
-  // 4. HMAC comparison (base64, not hex — Typeform uses base64)
-  const expected = 'sha256=' + createHmac('sha256', secret).update(Buffer.from(rawBody)).digest('base64');
+  // HMAC-first: verify the signature over exact bytes BEFORE touching JSON.
+  // An attacker can feed malformed JSON; parsing untrusted input before
+  // authenticating it is a well-known footgun (CVE-style surface for parser
+  // bugs and resource exhaustion). Only proceed to replay checks once we
+  // know the payload was signed by someone holding the shared secret.
+  const bodyBuffer = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, 'utf8');
+  const expected =
+    SIGNATURE_HEADER_PREFIX +
+    createHmac('sha256', secret).update(bodyBuffer).digest('base64');
   const providedBuf = Buffer.from(signatureHeader);
   const expectedBuf = Buffer.from(expected);
 
   if (providedBuf.length !== expectedBuf.length) {
     return { valid: false, reason: 'hmac_length_mismatch' };
   }
+  if (!timingSafeEqual(providedBuf, expectedBuf)) {
+    return { valid: false, reason: 'hmac_mismatch' };
+  }
 
-  return timingSafeEqual(providedBuf, expectedBuf)
-    ? { valid: true }
-    : { valid: false, reason: 'hmac_mismatch' };
+  // Replay window is evaluated only after HMAC passes. We're guarding
+  // against legitimate-but-old payloads (retried deliveries, delayed
+  // queues), not untrusted input — unauthenticated traffic can't reach here.
+  const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+  let submittedAt: Date | null = null;
+  try {
+    const parsed = JSON.parse(bodyString) as {
+      form_response?: { submitted_at?: unknown };
+    };
+    const ts = parsed?.form_response?.submitted_at;
+    // Type guard: `new Date(number)` would accept a unix timestamp and the
+    // replay check would then silently operate on a different time basis
+    // than Typeform's ISO-8601 contract. Refuse anything that isn't a
+    // non-empty string.
+    if (typeof ts === 'string' && ts.length > 0) {
+      submittedAt = new Date(ts);
+    }
+  } catch {
+    // HMAC was valid but the body doesn't parse. Treat as replay failure so
+    // the route handler logs it and drops rather than crashing.
+  }
+  if (!submittedAt || isNaN(submittedAt.getTime())) {
+    return { valid: false, reason: 'replay_window_exceeded' };
+  }
+
+  // Asymmetric window: tight on the future (clock skew only), loose on the
+  // past (legitimate retries). `Math.abs` would treat both directions the
+  // same, letting an attacker replay a future-dated payload.
+  const delta = now.getTime() - submittedAt.getTime();
+  if (delta < -FUTURE_SKEW_MS) return { valid: false, reason: 'replay_window_exceeded' };
+  if (delta > PAST_WINDOW_MS) return { valid: false, reason: 'replay_window_exceeded' };
+
+  return { valid: true };
 }
