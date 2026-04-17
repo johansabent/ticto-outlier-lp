@@ -80,7 +80,7 @@ export function useAttribution(): { utms: Attribution } {
     // readStoredAttribution() returns null on the server and the stored
     // object on the client.
     const stored = readStoredAttribution();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Syncing localStorage (external system) to state post-hydration; lazy-init alternative causes hydration mismatch (server returns null, client returns stored object).
     if (stored) setUtms(stored);
   }, []);
   return { utms };
