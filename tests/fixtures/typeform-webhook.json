@@ -1,0 +1,26 @@
+{
+  "event_id": "01KPC1H3VJSS9SP8FC4983BD4A",
+  "event_type": "form_response",
+  "form_response": {
+    "form_id": "FbFMsO5x",
+    "token": "p7zn6z8fnns6o0kdj1p7zn6zs6ltyxr5",
+    "landed_at": "2026-04-16T21:00:12Z",
+    "submitted_at": "2026-04-16T21:00:39Z",
+    "hidden": {
+      "sck": "testclick",
+      "src": "lp",
+      "utm_campaign": "test",
+      "utm_content": "banner",
+      "utm_medium": "cpc",
+      "utm_source": "google",
+      "utm_term": "ai"
+    },
+    "answers": [
+      { "type": "text",         "text": "Teste QA",               "field": { "ref": "nome",         "type": "short_text" } },
+      { "type": "text",         "text": "12345678900",            "field": { "ref": "cpf",          "type": "short_text" } },
+      { "type": "email",        "email": "teste@example.com",     "field": { "ref": "email",        "type": "email" } },
+      { "type": "phone_number", "phone_number": "+5511900000000", "field": { "ref": "telefone",     "type": "phone_number" } },
+      { "type": "choice",       "choice": { "label": "Sim", "ref": "490ea062-6100-416d-96fa-17e8e8991a4e" }, "field": { "ref": "sells_online", "type": "multiple_choice" } }
+    ]
+  }
+}
