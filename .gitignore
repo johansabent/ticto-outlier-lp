@@ -61,3 +61,17 @@ typeform_embed_pkg/
 
 # visual audit artefacts (screenshots + diagnostics; never shipped)
 visual-audit-out/
+
+# Playwright MCP scratch folder (snapshots from interactive browser sessions)
+.playwright-mcp/
+
+# one-off screenshot captures at repo root (manual smoke-check output).
+# Leading `/` anchors to the repo root — we don't want these patterns to
+# hide intentional assets that happen to match somewhere else (e.g. a
+# `public/images/lp-hero.png` if we ever add one).
+/*.verified.png
+/lp-*.png
+
+# system / agent leftovers
+.tmp/
+/tmp/
