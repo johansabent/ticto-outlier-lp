@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Locally-extracted third-party packages (for code inspection, not shipped):
+    "typeform_pkg/**",
+    "typeform_embed_pkg/**",
+    // Local package manager caches:
+    ".npm-cache/**",
+    ".pnpm-cache/**",
   ]),
 ]);
 

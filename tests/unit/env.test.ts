@@ -44,7 +44,8 @@ describe('lib/env', () => {
 
   it('throws when TYPEFORM_WEBHOOK_SECRET is missing in production', async () => {
     setValidEnv();
-    process.env.NODE_ENV = 'production';
+    // Next.js augments process.env.NODE_ENV to a readonly literal union; bypass via Object.assign for the test.
+    Object.assign(process.env, { NODE_ENV: 'production' });
     delete process.env.TYPEFORM_WEBHOOK_SECRET;
     await expect(import('@/lib/env').then((m) => m.getServerEnv())).rejects.toThrow(
       /TYPEFORM_WEBHOOK_SECRET/,
