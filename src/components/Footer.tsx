@@ -68,7 +68,7 @@ export default function Footer() {
                     </h2>
                     <nav className="flex flex-col text-[16px] text-white font-tomato w-full">
                         <Link
-                            href="#signup-form"
+                            href="#cadastro"
                             className="py-[16px] border-b border-white/10 hover:text-brand-cyan transition-colors tracking-[-0.176px] text-center lg:text-left"
                         >
                             Entrar
@@ -142,7 +142,7 @@ export default function Footer() {
                         style={{ background: 'linear-gradient(90deg, #FF9C2B, #FF2689, #9747FF)' }}
                     >
                         <Link
-                            href="#signup-form"
+                            href="#cadastro"
                             className="flex w-full items-center justify-between px-[24px] py-[16px] rounded-[30px] bg-bg-black font-bold text-[16px] font-tomato tracking-[-0.176px] text-white hover:bg-white/5 transition-colors"
                         >
                             Crie sua conta
