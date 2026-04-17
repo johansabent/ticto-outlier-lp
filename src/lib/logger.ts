@@ -38,31 +38,37 @@ export type LeadEvent =
     };
 
 export function redactEmail(raw: string): string {
-  if (!raw) return '';
-  const at = raw.indexOf('@');
+  const input = (raw ?? '').trim();
+  if (!input) return '';
+  const at = input.indexOf('@');
   if (at < 1) return '***';
-  return `${raw[0]}***${raw.slice(at)}`;
+  return `${input[0]}***${input.slice(at)}`;
 }
 
 export function redactPhone(raw: string): string {
   if (!raw) return '';
   const digits = raw.replace(/\D/g, '');
   if (digits.length < 1) return '***';
-  // For short inputs, emit the actual digits after the prefix rather than
-  // padding-by-repeat (e.g. "5" would have become "***-5555", fabricating
-  // digits that never existed and hurting log correlation).
-  if (digits.length < 4) return `***-${digits}`;
+  // AGENTS.md Core Invariant pins the canonical mask format at `***-1234`
+  // (four visible characters after the dash). For short inputs we emit
+  // `***-****` rather than the actual partial digits — this keeps the
+  // fixed shape and avoids leaking a full short attacker-supplied value.
+  if (digits.length < 4) return '***-****';
   return `***-${digits.slice(-4)}`;
 }
 
 function write(level: 'info' | 'warn' | 'error', evt: LeadEvent): void {
-  console.log(
-    JSON.stringify({
-      level,
-      ts: new Date().toISOString(),
-      ...evt,
-    }),
-  );
+  const payload = JSON.stringify({
+    level,
+    ts: new Date().toISOString(),
+    ...evt,
+  });
+  // Route each level to its matching console method so log aggregators that
+  // split stdout/stderr classify severity correctly even when they ignore
+  // the JSON payload.
+  if (level === 'error') console.error(payload);
+  else if (level === 'warn') console.warn(payload);
+  else console.log(payload);
 }
 
 export const logger = {

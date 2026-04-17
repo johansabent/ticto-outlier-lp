@@ -21,13 +21,21 @@ describe('lib/logger', () => {
     expect(redactPhone('abc')).toBe('***');
   });
 
-  it('redactPhone emits partial digits without fabrication for short inputs', () => {
-    // Guards against the prior `padStart(4, digits)` idiom which would have
-    // turned '5' into '***-5555' and '12' into '***-1212', fabricating
-    // digits that never existed and hurting log correlation.
-    expect(redactPhone('5')).toBe('***-5');
-    expect(redactPhone('12')).toBe('***-12');
-    expect(redactPhone('123')).toBe('***-123');
+  it('redactPhone emits the canonical fixed-format mask for short inputs', () => {
+    // AGENTS.md Core Invariant pins the mask shape at `***-1234` (four
+    // visible chars after the dash). Short non-empty digit inputs get
+    // `***-****` — preserves the canonical shape, avoids fabricating
+    // digits (the original padStart bug), and avoids leaking a short
+    // attacker-supplied value verbatim (codex-bot P1).
+    expect(redactPhone('5')).toBe('***-****');
+    expect(redactPhone('12')).toBe('***-****');
+    expect(redactPhone('123')).toBe('***-****');
+  });
+
+  it('redactEmail trims surrounding whitespace before redacting', () => {
+    expect(redactEmail('  joao.silva@example.com  ')).toBe('j***@example.com');
+    expect(redactEmail('\t\nuser@x.io\n')).toBe('u***@x.io');
+    expect(redactEmail('   ')).toBe('');
   });
 
   it('logger.info writes a single-line JSON document with event + timestamp', () => {
@@ -50,16 +58,33 @@ describe('lib/logger', () => {
     expect(() => new Date(parsed.ts).toISOString()).not.toThrow();
   });
 
-  it('logger.error writes with level=error', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  it('logger.error writes to console.error with level=error', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     logger.error({
       event: 'lead.failed',
       submission_id: 's1',
       error_class: 'datacrazy_5xx',
       error_message: 'boom',
     });
-    const parsed = JSON.parse(spy.mock.calls[0][0] as string);
+    expect(errorSpy).toHaveBeenCalledOnce();
+    expect(logSpy).not.toHaveBeenCalled();
+    const parsed = JSON.parse(errorSpy.mock.calls[0][0] as string);
     expect(parsed.level).toBe('error');
     expect(parsed.error_class).toBe('datacrazy_5xx');
+  });
+
+  it('logger.warn writes to console.warn with level=warn', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logger.warn({
+      event: 'lead.failed',
+      error_class: 'parse_error',
+      error_message: 'partial',
+    });
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(logSpy).not.toHaveBeenCalled();
+    const parsed = JSON.parse(warnSpy.mock.calls[0][0] as string);
+    expect(parsed.level).toBe('warn');
   });
 });
