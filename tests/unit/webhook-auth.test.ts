@@ -164,7 +164,10 @@ describe('lib/webhook-auth — verifyTypeformSignature', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('rejects when form_response.submitted_at is missing', () => {
+  it('rejects when form_response.submitted_at is missing (malformed_payload)', () => {
+    // Post-Gemini-round-2: structural failures (parse fail, missing ts, bad
+    // type, invalid date) report `malformed_payload` so observability can
+    // distinguish upstream schema drift from actual replay-window misses.
     const bodyNoTs = JSON.stringify({ form_response: {} });
     const sig = makeSignature(bodyNoTs, SECRET);
     const result = verifyTypeformSignature({
@@ -173,13 +176,13 @@ describe('lib/webhook-auth — verifyTypeformSignature', () => {
       secret: SECRET,
       now: FIXTURE_NOW,
     });
-    expect(failureReason(result)).toBe('replay_window_exceeded');
+    expect(failureReason(result)).toBe('malformed_payload');
   });
 
-  it('rejects when submitted_at is not a string (type-coercion guard)', () => {
-    // Typeform's contract says submitted_at is an ISO-8601 string. If the
+  it('rejects when submitted_at is not a string (type-coercion guard → malformed_payload)', () => {
+    // Typeform's contract says submitted_at is ISO-8601 string. If the
     // payload sends a unix number, `new Date(number)` would silently accept
-    // it and compare on a different time basis — refuse anything non-string.
+    // it on a different time basis — refuse anything non-string.
     const bodyBadTs = JSON.stringify({
       form_response: { submitted_at: 1713304839 },
     });
@@ -190,13 +193,28 @@ describe('lib/webhook-auth — verifyTypeformSignature', () => {
       secret: SECRET,
       now: FIXTURE_NOW,
     });
-    expect(failureReason(result)).toBe('replay_window_exceeded');
+    expect(failureReason(result)).toBe('malformed_payload');
   });
 
-  it('returns replay_window_exceeded when body is malformed JSON but HMAC matches', () => {
+  it('rejects when submitted_at is present but not a valid date string', () => {
+    // `new Date("not-a-date")` returns an Invalid Date (NaN time). Must map
+    // to malformed_payload, not a silent accept or a replay-window reason.
+    const bodyBadDate = JSON.stringify({
+      form_response: { submitted_at: 'not-a-date' },
+    });
+    const sig = makeSignature(bodyBadDate, SECRET);
+    const result = verifyTypeformSignature({
+      rawBody: bodyBadDate,
+      signatureHeader: sig,
+      secret: SECRET,
+      now: FIXTURE_NOW,
+    });
+    expect(failureReason(result)).toBe('malformed_payload');
+  });
+
+  it('returns malformed_payload when body is not valid JSON but HMAC matches', () => {
     // HMAC-first ordering means we've authenticated the sender; unparseable
-    // JSON post-auth is treated as replay-window failure rather than an
-    // exception that would 500 the route.
+    // JSON post-auth surfaces as malformed_payload rather than 500-ing.
     const junk = 'not-json-at-all';
     const sig = makeSignature(junk, SECRET);
     const result = verifyTypeformSignature({
@@ -205,7 +223,21 @@ describe('lib/webhook-auth — verifyTypeformSignature', () => {
       secret: SECRET,
       now: FIXTURE_NOW,
     });
-    expect(failureReason(result)).toBe('replay_window_exceeded');
+    expect(failureReason(result)).toBe('malformed_payload');
+  });
+
+  it('rejects when signature header exceeds the max length (DoS guard)', () => {
+    // Attacker sends an enormous `Typeform-Signature` header to force a
+    // large `Buffer.from(...)` allocation per request. Reject before
+    // materializing the buffer.
+    const huge = 'sha256=' + 'A'.repeat(1024);
+    const result = verifyTypeformSignature({
+      rawBody: FIXTURE_BODY,
+      signatureHeader: huge,
+      secret: SECRET,
+      now: FIXTURE_NOW,
+    });
+    expect(failureReason(result)).toBe('hmac_header_too_long');
   });
 
   it('throws when the secret is empty', () => {

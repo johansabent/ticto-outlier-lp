@@ -3,8 +3,10 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 export type ValidationFailure =
   | 'hmac_missing'
   | 'hmac_bad_format'
+  | 'hmac_header_too_long'
   | 'hmac_length_mismatch'
   | 'hmac_mismatch'
+  | 'malformed_payload'
   | 'replay_window_exceeded';
 
 export type ValidationResult = { valid: true } | { valid: false; reason: ValidationFailure };
@@ -22,6 +24,11 @@ export interface VerifyTypeformInput {
 }
 
 const SIGNATURE_HEADER_PREFIX = 'sha256=';
+// Cap header length before allocating a Buffer from it. A valid Typeform
+// signature is `sha256=` (7) + 44 base64 chars = 51 bytes; 256 is comfortably
+// above any legitimate value while bounding the memory an attacker can force
+// us to allocate with an oversized `Typeform-Signature` header.
+const MAX_SIGNATURE_HEADER_LENGTH = 256;
 // Accept a small forward skew so mild clock drift between Typeform and this
 // runtime doesn't reject legitimate payloads.
 const FUTURE_SKEW_MS = 60 * 1000;
@@ -44,6 +51,13 @@ export function verifyTypeformSignature(input: VerifyTypeformInput): ValidationR
   }
 
   if (!signatureHeader) return { valid: false, reason: 'hmac_missing' };
+  // Guard memory allocation before `Buffer.from(signatureHeader)`. Without
+  // this, an oversized header (Node caps at ~16KB per header, but that's
+  // still 16KB of per-request allocation) would be materialized in full
+  // before any structural check runs.
+  if (signatureHeader.length > MAX_SIGNATURE_HEADER_LENGTH) {
+    return { valid: false, reason: 'hmac_header_too_long' };
+  }
   if (!signatureHeader.startsWith(SIGNATURE_HEADER_PREFIX)) {
     return { valid: false, reason: 'hmac_bad_format' };
   }
@@ -72,10 +86,12 @@ export function verifyTypeformSignature(input: VerifyTypeformInput): ValidationR
   // queues), not untrusted input — unauthenticated traffic can't reach here.
   const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
   let submittedAt: Date | null = null;
+  let parseOk = false;
   try {
     const parsed = JSON.parse(bodyString) as {
       form_response?: { submitted_at?: unknown };
     };
+    parseOk = true;
     const ts = parsed?.form_response?.submitted_at;
     // Type guard: `new Date(number)` would accept a unix timestamp and the
     // replay check would then silently operate on a different time basis
@@ -85,11 +101,16 @@ export function verifyTypeformSignature(input: VerifyTypeformInput): ValidationR
       submittedAt = new Date(ts);
     }
   } catch {
-    // HMAC was valid but the body doesn't parse. Treat as replay failure so
-    // the route handler logs it and drops rather than crashing.
+    // HMAC was valid but the body doesn't parse — post-auth malformed data.
   }
+  // malformed_payload vs replay_window_exceeded: the former means structural
+  // failure (parse, missing/non-string submitted_at, invalid date) — useful
+  // observability signal for upstream Typeform schema drift. The latter is
+  // reserved for timestamps that successfully parsed but fall outside the
+  // accept window — a replay-protection signal.
+  if (!parseOk) return { valid: false, reason: 'malformed_payload' };
   if (!submittedAt || isNaN(submittedAt.getTime())) {
-    return { valid: false, reason: 'replay_window_exceeded' };
+    return { valid: false, reason: 'malformed_payload' };
   }
 
   // Asymmetric window: tight on the future (clock skew only), loose on the
