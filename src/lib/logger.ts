@@ -28,6 +28,12 @@ export type LeadEvent =
       datacrazy_status: number;
       datacrazy_lead_id: string | number | null;
       timing_ms: number;
+      // PII-redacted hints per AGENTS.md Core Invariant: masked-only, never
+      // the full email/phone/name. Full values are already in Datacrazy;
+      // logs get shape-preserving placeholders for observability.
+      email_hint: string;
+      phone_hint: string;
+      name_hint: string;
     }
   | {
       event: 'lead.failed';
