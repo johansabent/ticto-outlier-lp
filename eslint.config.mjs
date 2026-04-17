@@ -18,6 +18,9 @@ const eslintConfig = defineConfig([
     // Local package manager caches:
     ".npm-cache/**",
     ".pnpm-cache/**",
+    // Agent + audit artefacts (transient; never shipped):
+    ".claude/**",
+    "visual-audit-out/**",
   ]),
 ]);
 

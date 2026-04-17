@@ -58,3 +58,6 @@ next-env.d.ts
 # locally-extracted third-party packages (for code inspection, not shipped)
 typeform_pkg/
 typeform_embed_pkg/
+
+# visual audit artefacts (screenshots + diagnostics; never shipped)
+visual-audit-out/
