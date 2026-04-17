@@ -327,7 +327,7 @@ Classic branch protection (free on public repos). Writes this contract into GitH
 cat > /tmp/branch-protection.json <<'EOF'
 {
   "required_status_checks": null,
-  "enforce_admins": false,
+  "enforce_admins": true,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": false,
@@ -347,7 +347,7 @@ EOF
 gh api --method PUT repos/johansabent/ticto-ebulicao-lp/branches/main/protection --input /tmp/branch-protection.json
 ```
 
-Expected: JSON body back with `required_pull_request_reviews.required_approving_review_count: 0` and `allow_force_pushes.enabled: false`. Once CI lands in Task 20, return here and add the CI job name to `required_status_checks.contexts`.
+Expected: JSON body back with `required_pull_request_reviews.required_approving_review_count: 0`, `allow_force_pushes.enabled: false`, and `enforce_admins.enabled: true`. **The admin-exempt loophole is closed deliberately** — the 2026-04-16 leak happened from an admin account; letting the admin bypass the rule would keep the exact miss this workflow exists to prevent. Once CI lands in Task 20, return here and add the CI job name to `required_status_checks.contexts`. If a force-push is ever needed for a follow-up history scrub, temporarily relax the rule via `gh api --method DELETE repos/.../branches/main/protection/enforce_admins`, do the rewrite, and re-enable with PUT — never leave admin bypass on by default.
 
 - [ ] **Step 8.2: Enable Dependabot alerts + automated security fixes**
 
@@ -758,31 +758,55 @@ The original scanner only walks `.next` + `out`. The 2026-04-15/16 webhook-secre
 
 ```javascript
 // Repo-source scan (second phase) — additive to the existing client-bundle check above.
-const SOURCE_ROOTS = ['docs', 'src', 'tests', '.github', 'scripts'];
+import { createHash } from 'node:crypto';
 
-// Known burned values: literal strings that must never appear in committed source.
-// Add to this list any secret/PAT/token that was ever exposed publicly and rotated.
-const BURNED_VALUES = [
+const SOURCE_ROOTS = ['docs', 'src', 'tests', '.github'];
+
+// Known burned values live OUTSIDE this file — storing the literal here would
+// re-leak the exact thing we scrubbed, and would make the scanner flag its own
+// plan/script forever. Instead we store SHA-256 prefixes of burned values.
+// To add a new entry: run `echo -n "<leaked-value>" | sha256sum | cut -c1-16`
+// and paste the 16-char prefix below. Never paste the plaintext here.
+const BURNED_HASH_PREFIXES = [
   // 2026-04-16: Typeform webhook secret committed to public repo, rotated same day.
-  'openclaw-webhook-secret-2026',
+  // sha256("<burned-value>") sliced to first 16 chars — irreversible and non-leaking.
+  '6bdb4852bf6d6042',
 ];
 
-// Shape-based patterns: catch newly-leaked secrets we don't explicitly know about yet.
+// Shape-based patterns: catch newly-leaked secrets we don't explicitly know about.
 // Keep patterns tight — false positives turn this into noise and it gets ignored.
+// Deliberately NO generic hex/base64 catch-all — the superseded YayForms ADR contains
+// a real 64-char webhook signature as documentation, which a generic rule would flag.
 const SECRET_PATTERNS = [
   { name: 'Typeform PAT', re: /\btfp_[A-Za-z0-9_-]{40,}\b/ },
   { name: 'GitHub PAT (classic)', re: /\bghp_[A-Za-z0-9]{36,}\b/ },
   { name: 'GitHub fine-grained PAT', re: /\bgithub_pat_[A-Za-z0-9_]{80,}\b/ },
   { name: 'Vercel token', re: /\bvercel_[A-Za-z0-9]{24,}\b/ },
   { name: 'OpenAI key', re: /\bsk-[A-Za-z0-9]{32,}\b/ },
-  { name: 'Generic Bearer-ish 40+ hex', re: /\b[A-Fa-f0-9]{40,}\b(?=[^A-Fa-f0-9]|$)/ },
+  { name: 'AWS access key', re: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: 'Slack bot token', re: /\bxoxb-[0-9]+-[0-9]+-[A-Za-z0-9]{24,}\b/ },
 ];
 
 const SOURCE_INCLUDE = /\.(m?[jt]sx?|json|md|mdx|ya?ml|toml|html|css|env\..*|txt)$/;
 const SOURCE_EXCLUDE = /(^|\/)(node_modules|\.next|out|coverage|test-results|playwright-report|\.git|\.vercel|\.pnpm-cache|\.npm-cache)(\/|$)/;
 
+// Sliding-window scan for burned-value hashes. We hash every token that looks
+// like it could be a secret (length 12-128, common secret charset) and compare
+// the first 16 chars of its sha256 against the deny-list. This catches the exact
+// burned value even when it has no recognizable "shape" (e.g., a phrase like
+// "openclaw-webhook-secret-2026"), without ever committing the plaintext.
+function sha256Prefix(s) {
+  return createHash('sha256').update(s).digest('hex').slice(0, 16);
+}
+
+function candidateTokens(body) {
+  // Tokens = contiguous runs of [A-Za-z0-9_-] between 12 and 128 chars.
+  return body.match(/[A-Za-z0-9][A-Za-z0-9_\-]{11,127}/g) ?? [];
+}
+
 async function sourceScan() {
   const findings = [];
+  const burned = new Set(BURNED_HASH_PREFIXES);
   async function walkSource(dir) {
     let entries;
     try { entries = await readdir(dir); } catch { return; }
@@ -793,12 +817,15 @@ async function sourceScan() {
       if (s.isDirectory()) { await walkSource(p); continue; }
       if (!SOURCE_INCLUDE.test(p)) continue;
       const body = await readFile(p, 'utf8').catch(() => '');
-      for (const v of BURNED_VALUES) {
-        if (body.includes(v)) findings.push({ file: p, hit: `burned:${v}` });
+      // Phase A: hash-based burned-value detection
+      for (const tok of candidateTokens(body)) {
+        if (burned.has(sha256Prefix(tok))) {
+          findings.push({ file: p, hit: `burned-hash-match:${sha256Prefix(tok)}` });
+        }
       }
+      // Phase B: shape-based detection
       for (const { name, re } of SECRET_PATTERNS) {
         const m = body.match(re);
-        // Whitelist test-fixture placeholders so we don't chase our own tail.
         if (m && !/REDACTED|example|placeholder|fixture|test-/i.test(m[0])) {
           findings.push({ file: p, hit: `${name}:${m[0].slice(0, 12)}…` });
         }
@@ -818,7 +845,7 @@ if (srcHits.length > 0) {
 }
 ```
 
-Rewire `main()` so both phases run and both contribute to the exit code. Keep the existing client-bundle scan — production assets AND source both need coverage.
+**Why hashes, not literals:** writing the burned plaintext into the scanner would (a) re-publish it in the public repo and (b) make the scanner flag its own code forever. The 16-char sha256 prefix is irreversible and non-colliding in practice for short strings (~64 bits of entropy). If a burned value is rotated, add its hash prefix here; if it's discovered that the old prefix ever had a false-positive collision, swap to a 32-char prefix. `SOURCE_ROOTS` deliberately excludes `scripts/` so the scanner cannot flag itself regardless of false-positive risk. Rewire `main()` so both phases run and both contribute to the exit code.
 
 - [ ] **Step 14: Write a throwaway sanity test**
 
