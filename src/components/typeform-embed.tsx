@@ -21,7 +21,7 @@ export function TypeformEmbed({ formId }: { formId: string }) {
       hidden={hidden}
       inlineOnMobile
       opacity={0}
-      className="w-full h-[600px]"
+      className="w-full h-[600px] lg:h-[780px]"
     />
   );
 }

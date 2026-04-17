@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { ShieldCheck } from 'lucide-react';
 import { UTMRehydrator } from '@/components/utm-rehydrator';
 import Hero from '@/components/Hero';
 import Rules from '@/components/Rules';
@@ -56,14 +57,28 @@ export default function Page() {
           id="cadastro"
           className="w-full lg:w-[488px] flex flex-col order-2 lg:sticky lg:top-24 lg:h-fit relative z-20 mt-[51px] lg:mt-0"
         >
-          <div className="rounded-2xl border border-brand-cyan/20 bg-dark-700 p-8 shadow-xl">
-            <h2 className="mb-2 font-tomato text-2xl font-bold text-bg-white">
+          <div className="rounded-2xl bg-bg-white p-8 shadow-xl">
+            <p className="mb-6 font-tomato text-xs font-bold uppercase tracking-wider text-[#0e7490]">
               CADASTRO 100% GRATUITO
-            </h2>
-            <p className="mb-6 text-sm text-text-muted flex items-center gap-1">
-              <span>🔒</span> Seus dados estão seguros
             </p>
             <TypeformEmbed formId={NEXT_PUBLIC_TYPEFORM_FORM_ID} />
+            <p className="mt-4 text-xs text-[var(--color-placeholder)] leading-relaxed">
+              Ao enviar seus dados, você autoriza que a Ticto entre em contato e
+              declara estar ciente das{' '}
+              <a
+                href="https://ticto.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-solid hover:text-brand-cyan transition-colors"
+              >
+                Políticas e Termos
+              </a>
+              .
+            </p>
+            <div className="mt-4 flex items-center gap-2 text-sm text-[var(--color-placeholder)]">
+              <ShieldCheck className="w-5 h-5 text-brand-cyan" strokeWidth={2} />
+              Seus dados estão seguros
+            </div>
           </div>
         </div>
       </main>

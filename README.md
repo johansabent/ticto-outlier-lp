@@ -8,6 +8,8 @@ Landing page de captura de leads para o **Ebulição** (evento Outlier Experienc
 - **Spec do produto:** [`docs/superpowers/specs/2026-04-15-ticto-lp-design.md`](docs/superpowers/specs/2026-04-15-ticto-lp-design.md)
 - **ADR de autenticação:** [`docs/decisions/2026-04-16-typeform-webhook-auth.md`](docs/decisions/2026-04-16-typeform-webhook-auth.md)
 
+> **Sobre a escolha Typeform × YayForms:** o briefing lista YayForms como sugestão, mas o **Gustavo (Head de Marketing da Ticto)** confirmou diretamente via WhatsApp que a Ticto **usa Typeform em produção** e que o YayForms foi **descontinuado este mês**. A escolha de Typeform para esta entrega é oficialmente aprovada — a integração aqui espelha o provider real da plataforma.
+
 ### URL de teste parametrizada
 
 ```
