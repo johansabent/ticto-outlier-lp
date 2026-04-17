@@ -39,9 +39,12 @@ export function parseAnswers(answers: TypeformAnswer[]): AnswerByRef {
     throw new TypeError('Typeform answers must be an array');
   }
 
-  // Index answers by field.ref
+  // Index answers by field.ref. Skip malformed answers (missing field.ref) —
+  // they'll be reported downstream as the matching "Missing required" error
+  // with the semantic ref name instead of a raw TypeError on property access.
   const byRef = new Map<string, TypeformAnswer>();
   for (const a of answers) {
+    if (!a?.field?.ref) continue;
     byRef.set(a.field.ref, a);
   }
 
@@ -53,6 +56,15 @@ export function parseAnswers(answers: TypeformAnswer[]): AnswerByRef {
         throw new Error(`Missing required Typeform field: ${ref}`);
       }
       continue;
+    }
+    // Guard against Typeform form drift: if the form is edited so a ref now
+    // points to a different field kind (e.g. the `email` ref becomes a
+    // short-text question), the registry's declared type stops matching the
+    // live payload. Fail fast instead of silently extracting the wrong value.
+    if (answer.type !== meta.type) {
+      throw new Error(
+        `Type mismatch for Typeform field ${ref}: expected ${meta.type}, got ${answer.type}`,
+      );
     }
     const value = extractValue(answer);
     if (!value && meta.required) {

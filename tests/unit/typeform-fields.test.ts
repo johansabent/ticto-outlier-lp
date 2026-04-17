@@ -51,4 +51,34 @@ describe('lib/typeform-fields', () => {
     expect(() => parseAnswers(null as never)).toThrow();
     expect(() => parseAnswers({} as never)).toThrow();
   });
+
+  it('parseAnswers throws when the live Typeform type drifts from the registry', () => {
+    // Simulates the Typeform form being edited so the `email` ref is now
+    // pointing at a short-text field. parseAnswers must fail fast, not
+    // silently accept whatever `answer.text` happens to contain.
+    const answers: TypeformAnswer[] = [
+      { type: 'text', text: 'Alguém', field: { ref: 'nome', type: 'short_text' } },
+      { type: 'text', text: '00000000000', field: { ref: 'cpf', type: 'short_text' } },
+      { type: 'text', text: 'not-an-email', field: { ref: 'email', type: 'short_text' } },
+      { type: 'phone_number', phone_number: '+5500000000000', field: { ref: 'telefone', type: 'phone_number' } },
+      { type: 'choice', choice: { label: 'Sim', ref: 'uuid' }, field: { ref: 'sells_online', type: 'multiple_choice' } },
+    ];
+    expect(() => parseAnswers(answers)).toThrow(/Type mismatch for Typeform field email/);
+  });
+
+  it('parseAnswers skips answers with missing field.ref instead of crashing with TypeError', () => {
+    // Malformed Typeform payload: an answer with no field.ref. Without the
+    // `a?.field?.ref` guard this would crash with "Cannot read properties of
+    // undefined (reading 'ref')" inside the index loop, losing all context.
+    const answers: TypeformAnswer[] = [
+      { type: 'text', text: 'Alguém', field: { ref: 'nome', type: 'short_text' } },
+      { type: 'text', text: '00000000000', field: { ref: 'cpf', type: 'short_text' } },
+      { type: 'email', email: 'teste@example.com', field: { ref: 'email', type: 'email' } },
+      { type: 'phone_number', phone_number: '+5500000000000', field: { ref: 'telefone', type: 'phone_number' } },
+      // Malformed: field is missing entirely. The safer path drops it and
+      // then the required-field guard reports the missing `sells_online`.
+      { type: 'choice' } as unknown as TypeformAnswer,
+    ];
+    expect(() => parseAnswers(answers)).toThrow(/Missing required Typeform field: sells_online/);
+  });
 });
