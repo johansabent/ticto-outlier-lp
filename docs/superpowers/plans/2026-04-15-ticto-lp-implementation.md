@@ -901,7 +901,7 @@ Expected: all four pass. `pnpm build` produces `.next/` output. Then:
 ```bash
 pnpm check:secrets
 ```
-Expected: `check:secrets OK — no forbidden env keys found in client bundle.`
+Expected (after Step 13.5 lands): `check:secrets OK — no forbidden patterns found in bundle or source.` Before Step 13.5 lands, the baseline scanner from Step 13 prints `check:secrets OK — no forbidden env keys found in client bundle.` — either is acceptable depending on where in the task sequence the command is run.
 
 - [ ] **Step 16: Delete the throwaway sanity test**
 
