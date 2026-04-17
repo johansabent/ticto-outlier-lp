@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Something broke
-labels: ['type:feature', 'status:ready']
+labels: ['type:bug', 'status:ready']
 ---
 
 ## Summary
