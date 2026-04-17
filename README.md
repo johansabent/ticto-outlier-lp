@@ -123,7 +123,7 @@ pnpm dev                     # http://localhost:3000
 |---|---|---|
 | `DATACRAZY_API_TOKEN` | **server-only** | Datacrazy → Configurações → API (token exibido 1× ao criar). |
 | `TYPEFORM_WEBHOOK_SECRET` | **server-only**, min. 16 chars em produção | Typeform → Connect → Webhooks → Edit → Secret. |
-| `TYPEFORM_FORM_ID` | **server-only** | ID do formulário (atual: `FbFMsO5x`). Usado para validar `form_response.form_id`. |
+| `TYPEFORM_FORM_ID` | **server-only** | ID do formulário (atual: `FbFMsO5x`). Validado na inicialização via zod em `env.server.ts`. Hoje não é cruzado contra `form_response.form_id` no route handler — gap conhecido, documentado em [Lacunas conhecidas](#lacunas-conhecidas). |
 | `NEXT_PUBLIC_SITE_URL` | público (OG/canonical) | URL base do deploy. Ex.: `https://ticto-outlier-lp.vercel.app`. |
 | `NEXT_PUBLIC_TYPEFORM_FORM_ID` | público (widget client-side) | Mesmo valor de `TYPEFORM_FORM_ID`. A duplicação é intencional e documentada em `AGENTS.md`. |
 
@@ -206,6 +206,7 @@ Em respeito ao tempo de 72h e ao escopo do teste, aceitei as seguintes limitaç�
 - **Indireção `--font-*` em CSS vars.** Próximo passo é expor as fontes via `@theme` em vez de redeclarar.
 - **Marcação `<ol>` ausente nas "Regras".** O componente `Rules.tsx` usa `<div>` onde semanticamente um `<ol>` seria correto. A11y flag tracked.
 - **`.github/workflows/claude.yml` removido.** O repo é público; sem `ANTHROPIC_API_KEY` configurada, o workflow do Claude GitHub Action ficaria no vermelho. Removido enquanto a chave não for provisionada.
+- **`TYPEFORM_FORM_ID` não é cruzado contra `form_response.form_id`.** A env var existe e é validada por zod na inicialização, mas o route handler não compara o `form_id` do payload Typeform contra ela. Um atacante com o HMAC secret poderia, em tese, enviar um payload de *outro* form assinado corretamente e ele seria aceito. Proteção adicional de baixo custo: dois `if (body.form_response.form_id !== env.TYPEFORM_FORM_ID) return 403;` depois do HMAC check. Não crítico porque o HMAC secret é per-form no Typeform (vazar o secret já compromete todo o fluxo), mas vale fechar.
 - **P1s da auditoria de cobertura (Task 23).** Listados acima; pós-ship.
 
 Essa lista é explícita exatamente porque o avaliador merece ver **onde o escopo foi cortado** e por quê, em vez de descobrir depois.
