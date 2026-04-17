@@ -1,12 +1,45 @@
 # Ticto LP Ebulição Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **For automated reviewers (CodeRabbit / Codex / Gemini):** This is a forward-looking implementation plan, not documentation of current code. Every `- [ ]` step describes **future work** to be applied by a subagent; the repo's current state may legitimately diverge from any example shown here until the matching task is merged. Do **not** flag "drift between this plan and the code" as an actionable finding — drift is expected by design. Only flag issues where the plan is **internally inconsistent** (e.g. a code sample references an undefined symbol within its own example, or two steps contradict each other).
 
 **Goal:** Deploy a production landing page (Ticto × Ebulição — iPhone 16 Pro raffle, Rafa Prado event) that renders a Typeform embed, captures 7 tracking params (UTM + sck + src), forwards submissions to Datacrazy CRM via a server-side webhook handler, and ships with full CI, E2E coverage (Datacrazy mocked), screencast evidence, and a public GitHub repo — end-to-end within a 72h window.
 
 **Architecture:** Next.js 16.2 App Router on Vercel Fluid Compute (Node 24). Browser loads LP → a client UTM rehydrator (useLayoutEffect + localStorage + history.replaceState) ensures the 7 params are present in the URL before the Typeform inline embed mounts, which inherits them via the React SDK `hidden` prop. Typeform delivers a signed webhook to `/api/lead` → the Route Handler validates HMAC auth (single mode — Typeform is hmac-only), maps answer array by `field.ref` → named fields via a registry, transforms to a 3-layer Datacrazy payload (`source`, `sourceReferral.sourceUrl`, `notes` as structured JSON), and POSTs to `https://api.g1.datacrazy.io/api/v1/leads`. All secrets live server-side; `proxy.ts` only sets security headers.
 
 **Tech Stack:** Next.js ^16.2 (App Router, `proxy.ts`, async Request APIs), TypeScript ^5.1, Node.js 24 LTS on Vercel Fluid Compute, Tailwind CSS ^4 (CSS-first via `@theme`, no `tailwind.config.ts`), shadcn/ui CLI ^4 (Radix + `data-slot`), `tw-animate-css`, Zod, `@vercel/functions` (waitUntil), `@typeform/embed-react` ^4, Vitest + React Testing Library, Playwright ^1.59, pnpm, Vercel + GitHub integration, GitHub Actions (CI + E2E against Preview URL + Claude Code Action).
+
+---
+
+## Workflow Contract
+
+`main` is protected. Nothing lands on `main` except via a merged PR that passed CI. This section is the contract; the mechanics live in `.agent/workflows/review-pr.md` and `.agent/workflows/review-codex.md` — do not duplicate their content here, reference them.
+
+**Per-task pipeline (applies to every task below, regardless of `[SETUP]` / `[FEATURE]` / `[TEST]` tag):**
+
+1. **Branch.** Create `task-NN-short-slug` off `main` (e.g. `task-04-env-vars`). Never commit directly to `main`.
+2. **Implement + validate locally.** Follow the task steps. Run the repo-defined checks (`pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm e2e` as relevant — only commands that actually exist in this repo).
+3. **Read-only second opinion.** Before opening the PR, invoke `.agent/workflows/review-codex.md` (`/codex review` on the current diff, with a short focus when the change is risky — e.g. "focus on security and data flow" for auth or webhook changes). Fix any P1 findings inline before proceeding.
+4. **Open PR.** `gh pr create` (or GitKraken if the user explicitly asks for commit composition there) with a task-scoped title and a body that lists: what changed, why, how validated, and the task ID this closes.
+5. **Wait for CI + bots.** Once Task 20 ships CI, the required status check must be green. Active review bots (as of the plan-upgrade gate): **Dependabot** (alerts + weekly PRs) and **CodeQL** + **Claude Code Action** (both introduced by Task 22). No CodeRabbit, no Greptile — the `/review-pr` workflow's greptile handling stays dormant unless the user installs it later.
+6. **Resolve PR feedback.** Invoke `.agent/workflows/review-pr.md` — fetch comments + CI status, summarize into BLOCKING / SUGGESTION / NIT / QUESTION, fix locally, push fix commits to the same branch.
+7. **Dynamic YOLO loop override (user-authorized 2026-04-16).** For this repo during the 72h window, the agent is authorized to auto-resolve PR review threads it addresses with a code fix, push the fix commit, and merge the PR once every required check is green — without stopping to confirm every individual push/reply. The agent still stops on: (a) a BLOCKING item it cannot resolve with code, (b) a QUESTION requiring product judgment, (c) a reviewer explicitly requesting changes, (d) any review comment flagged as security/secret/credential-related, (e) Dependabot major-version bumps, (f) anything that would require a `git push --force` or a thread resolution on an issue not actually addressed. Between loop iterations, poll on a ≤10-minute cadence. This override applies only while the user remains present and active; if the session is interrupted mid-loop, the next session treats it as paused and re-confirms before resuming.
+8. **Merge.** Squash-merge via `gh pr merge --squash --delete-branch` once all required checks are green and all conversations are resolved. Delete the remote branch; prune locally with `git fetch --prune`.
+
+**Hard stops that override YOLO** (always wait for the user):
+- Force-push to any branch (secret scrubs, history rewrites)
+- Branch protection / repo settings changes
+- Any dependency that requires a new paid service or GitHub App install
+- Webhook secret rotation, Typeform form-config changes, Vercel env var edits
+- Dependabot major-version bump PRs
+- Any PR comment classified as BLOCKING where the fix is non-obvious or crosses module boundaries
+
+**Secrets discipline baked into the workflow:**
+- `scripts/check-secrets.mjs` (introduced in Task 3) scans built output + repo source for known secret-shaped strings. Task 3 Step 13.5 below extends its scope beyond `.next/out` to include `docs/`, `src/`, `tests/` — the 2026-04-16 leak happened in `docs/decisions/*.md`, which the original scanner would never have seen.
+- CI runs `pnpm check:secrets` on every PR (wired in Task 20); a match fails the check and blocks merge under branch protection.
+- Pre-commit hook is optional local defense. If wanted, `simple-git-hooks` can be wired in a follow-up, but the machine-enforced gate lives in CI — pre-commit is belt-and-suspenders.
+- Replaces the judgment-call "I swear I'll be careful" with a machine gate — exactly the miss that burned the Typeform webhook secret on 2026-04-15/16.
 
 ---
 
@@ -287,6 +320,55 @@ Expected: `.vercel/project.json` created (already gitignored). If the project do
 Open `https://vercel.com/johansabent/ticto-ebulicao-lp/settings/git` and confirm the repo is connected. Set production branch = `main`. Leave Preview = all other branches.
 
 > Can also be done via `vercel git connect`; GUI is faster for 72h.
+
+- [ ] **Step 8.1: Enable branch protection on `main`**
+
+Classic branch protection (free on public repos). Writes this contract into GitHub itself so any future accidental `git push origin main` is rejected by the remote, not just by convention.
+
+```bash
+cat > /tmp/branch-protection.json <<'EOF'
+{
+  "required_status_checks": null,
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false
+  },
+  "restrictions": null,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": true,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}
+EOF
+gh api --method PUT repos/johansabent/ticto-ebulicao-lp/branches/main/protection --input /tmp/branch-protection.json
+```
+
+Expected: JSON body back with `required_pull_request_reviews.required_approving_review_count: 0`, `allow_force_pushes.enabled: false`, and `enforce_admins.enabled: true`. **The admin-exempt loophole is closed deliberately** — the 2026-04-16 leak happened from an admin account; letting the admin bypass the rule would keep the exact miss this workflow exists to prevent. Once CI lands in Task 20, return here and add the CI job name to `required_status_checks.contexts`. If a force-push is ever needed for a follow-up history scrub, temporarily relax the rule via `gh api --method DELETE repos/.../branches/main/protection/enforce_admins`, do the rewrite, and re-enable with PUT — never leave admin bypass on by default.
+
+- [ ] **Step 8.2: Enable Dependabot alerts + automated security fixes**
+
+```bash
+gh api --method PUT repos/johansabent/ticto-ebulicao-lp/vulnerability-alerts
+gh api --method PUT repos/johansabent/ticto-ebulicao-lp/automated-security-fixes
+```
+
+Both endpoints return `204 No Content` when successful.
+
+Then commit the scheduling policy to the repo:
+
+```bash
+# File contents: see .github/dependabot.yml — weekly npm + github-actions,
+# minor+patch grouped into one PR per ecosystem, majors solo.
+git add .github/dependabot.yml
+```
+
+(The commit lands with the next PR; do not push to main directly.)
 
 - [ ] **Step 9: Verify**
 
@@ -645,7 +727,7 @@ function onlyClient(path) {
   return path.includes(`${'.next'}/static`) || path.startsWith('out');
 }
 
-async function main() {
+async function clientBundleScan() {
   const hits = [];
   for (const root of SCAN_ROOTS) {
     const files = await walk(root);
@@ -658,6 +740,11 @@ async function main() {
       }
     }
   }
+  return hits;
+}
+
+async function main() {
+  const hits = await clientBundleScan();
   if (hits.length > 0) {
     console.error('SECRET LEAK DETECTED in client bundle:');
     for (const h of hits) console.error(`  ${h.file} -> ${h.key}`);
@@ -671,6 +758,129 @@ main().catch((e) => {
   process.exit(2);
 });
 ```
+
+- [ ] **Step 13.5: Extend `scripts/check-secrets.mjs` to cover source + docs**
+
+The original scanner only walks `.next` + `out`. The 2026-04-15/16 webhook-secret leak lived in `docs/decisions/*.md`, which the scanner would never have seen. Extend it to scan the repo tree for both (a) known burned secret values as a literal deny-list, and (b) secret-shaped tokens by regex.
+
+Two placements are required (ESM disallows mid-file `import`):
+
+1. **Add one import to the top of `scripts/check-secrets.mjs`**, alongside the existing imports from Step 13:
+
+```javascript
+import { createHash } from 'node:crypto';
+```
+
+2. **Append the following constants, helpers, and `sourceScan()` below the existing `clientBundleScan()`** (same file). Then rewire `main()` as shown after this block so both phases run.
+
+```javascript
+// Repo-source scan (second phase) — additive to the existing client-bundle check above.
+// Scans the whole tree except build output / tooling caches / the scanner itself.
+// `scripts/` is in scope — security/build helpers are prime places to accidentally
+// hard-code a token — but the scanner excludes its own file so the deny-list
+// hash prefixes above never flag themselves.
+const SOURCE_ROOTS = ['docs', 'src', 'tests', '.github', 'scripts'];
+const SCANNER_SELF_PATH = 'scripts/check-secrets.mjs';
+
+// Known burned values live OUTSIDE this file — storing the literal here would
+// re-leak the exact thing we scrubbed, and would make the scanner flag its own
+// plan/script forever. Instead we store SHA-256 prefixes of burned values.
+// To add a new entry: run `echo -n "<leaked-value>" | sha256sum | cut -c1-16`
+// and paste the 16-char prefix below. Never paste the plaintext here.
+const BURNED_HASH_PREFIXES = [
+  // 2026-04-16: Typeform webhook secret committed to public repo, rotated same day.
+  // sha256("<burned-value>") sliced to first 16 chars — irreversible and non-leaking.
+  '6bdb4852bf6d6042',
+];
+
+// Shape-based patterns: catch newly-leaked secrets we don't explicitly know about.
+// Keep patterns tight — false positives turn this into noise and it gets ignored.
+// Deliberately NO generic hex/base64 catch-all — the superseded YayForms ADR contains
+// a real 64-char webhook signature as documentation, which a generic rule would flag.
+const SECRET_PATTERNS = [
+  { name: 'Typeform PAT', re: /\btfp_[A-Za-z0-9_-]{40,}\b/ },
+  { name: 'GitHub PAT (classic)', re: /\bghp_[A-Za-z0-9]{36,}\b/ },
+  { name: 'GitHub fine-grained PAT', re: /\bgithub_pat_[A-Za-z0-9_]{80,}\b/ },
+  { name: 'Vercel token', re: /\bvercel_[A-Za-z0-9]{24,}\b/ },
+  { name: 'OpenAI key', re: /\bsk-[A-Za-z0-9]{32,}\b/ },
+  { name: 'AWS access key', re: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: 'Slack bot token', re: /\bxoxb-[0-9]+-[0-9]+-[A-Za-z0-9]{24,}\b/ },
+];
+
+// File-type allowlist. `\.env` without a suffix is its own file, not an extension,
+// so it needs to be matched via the anchored alternative — otherwise a bare `.env`
+// is silently skipped and a bare-file leak sails through.
+const SOURCE_INCLUDE = /(\.env(\..*)?$)|\.(m?[jt]sx?|json|md|mdx|ya?ml|toml|html|css|txt)$/;
+const SOURCE_EXCLUDE = /(^|\/)(node_modules|\.next|out|coverage|test-results|playwright-report|\.git|\.vercel|\.pnpm-cache|\.npm-cache)(\/|$)/;
+
+// Sliding-window scan for burned-value hashes. We hash every token that looks
+// like it could be a secret (length 12-128, common secret charset) and compare
+// the first 16 chars of its sha256 against the deny-list. This catches the exact
+// burned value even when it has no recognizable "shape" (e.g., a phrase like
+// "openclaw-webhook-secret-2026"), without ever committing the plaintext.
+function sha256Prefix(s) {
+  return createHash('sha256').update(s).digest('hex').slice(0, 16);
+}
+
+function candidateTokens(body) {
+  // Tokens = contiguous runs of [A-Za-z0-9_-] between 12 and 128 chars.
+  return body.match(/[A-Za-z0-9][A-Za-z0-9_\-]{11,127}/g) ?? [];
+}
+
+async function sourceScan() {
+  const findings = [];
+  const burned = new Set(BURNED_HASH_PREFIXES);
+  async function walkSource(dir) {
+    let entries;
+    try { entries = await readdir(dir); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e);
+      const normalized = p.replace(/\\/g, '/');
+      if (SOURCE_EXCLUDE.test(normalized)) continue;
+      if (normalized === SCANNER_SELF_PATH) continue; // scanner can't flag itself
+      const s = await stat(p);
+      if (s.isDirectory()) { await walkSource(p); continue; }
+      if (!SOURCE_INCLUDE.test(p)) continue;
+      const body = await readFile(p, 'utf8').catch(() => '');
+      // Phase A: hash-based burned-value detection
+      for (const tok of candidateTokens(body)) {
+        if (burned.has(sha256Prefix(tok))) {
+          findings.push({ file: p, hit: `burned-hash-match:${sha256Prefix(tok)}` });
+        }
+      }
+      // Phase B: shape-based detection
+      for (const { name, re } of SECRET_PATTERNS) {
+        const m = body.match(re);
+        if (m && !/REDACTED|example|placeholder|fixture|test-/i.test(m[0])) {
+          findings.push({ file: p, hit: `${name}:${m[0].slice(0, 12)}…` });
+        }
+      }
+    }
+  }
+  for (const root of SOURCE_ROOTS) await walkSource(root);
+  return findings;
+}
+```
+
+**Rewire `main()` (shown inline, not as top-level side effects)** so both phases run and a hit from either flips the exit code. Do not paste `await sourceScan()` at module top level — it would run on import and short-circuit whatever loads the module next. The final `main()` should look like:
+
+```javascript
+async function main() {
+  const clientHits = await clientBundleScan(); // existing scan from Step 13
+  const sourceHits = await sourceScan();       // new scan from this step
+  const hits = [...clientHits, ...sourceHits];
+  if (hits.length > 0) {
+    console.error('SECRET LEAK DETECTED:');
+    for (const h of hits) console.error(`  ${h.file} -> ${h.hit ?? h.key}`);
+    process.exit(1);
+  }
+  console.log('check:secrets OK — no forbidden patterns found in bundle or source.');
+}
+
+main().catch((e) => { console.error(e); process.exit(2); });
+```
+
+**Why hashes, not literals:** writing the burned plaintext into the scanner would (a) re-publish it in the public repo and (b) make the scanner flag its own code forever. The 16-char sha256 prefix is irreversible and non-colliding in practice for short strings (~64 bits of entropy). If a burned value is rotated, add its hash prefix here; if it's discovered that the old prefix ever had a false-positive collision, swap to a 32-char prefix. `SOURCE_ROOTS` includes `scripts/` (security/build helpers are prime places to hard-code a token), and the single exclusion `SCANNER_SELF_PATH` keeps the scanner from flagging its own deny-list.
 
 - [ ] **Step 14: Write a throwaway sanity test**
 
@@ -699,7 +909,7 @@ Expected: all four pass. `pnpm build` produces `.next/` output. Then:
 ```bash
 pnpm check:secrets
 ```
-Expected: `check:secrets OK — no forbidden env keys found in client bundle.`
+Expected (after Step 13.5 lands): `check:secrets OK — no forbidden patterns found in bundle or source.` Before Step 13.5 lands, the baseline scanner from Step 13 prints `check:secrets OK — no forbidden env keys found in client bundle.` — either is acceptable depending on where in the task sequence the command is run.
 
 - [ ] **Step 16: Delete the throwaway sanity test**
 
@@ -712,7 +922,9 @@ rm tests/unit/sanity.test.ts
 ```bash
 git add .
 git commit -m "chore(scaffold): Next.js 16 + Tailwind v4 + shadcn v4 + Vitest + Playwright baseline"
-git push origin main
+git push -u origin HEAD
+# Per Workflow Contract: open a PR against main — never push main directly.
+# gh pr create --fill --base main
 ```
 
 Expected: Vercel triggers a Preview deployment on push (observable at `https://vercel.com/johansabent/ticto-ebulicao-lp/deployments`). It will fail at runtime because env vars aren't set yet — acceptable; Task 4 fixes that.
@@ -821,7 +1033,9 @@ Expected: `.env.local` (printed back → confirms ignored).
 ```bash
 git add .env.example
 git commit -m "chore(env): document required environment variables in .env.example"
-git push origin main
+git push -u origin HEAD
+# Per Workflow Contract: open a PR against main — never push main directly.
+# gh pr create --fill --base main
 ```
 
 **Acceptance:** `vercel env ls` shows all 5 variables in Production + Preview; `.env.local` exists and is gitignored.
@@ -3155,16 +3369,18 @@ jobs:
 
 > Placeholder env values are injected only for `pnpm build` so `getServerEnv()` doesn't fail-fast during the build. Real values live in Vercel Dashboard, never in CI.
 
-- [ ] **Step 2: Commit + push and watch the CI run**
+- [ ] **Step 2: Commit, push, open PR, then watch the CI run**
 
 ```bash
 git add .github/workflows/ci.yml
 git commit -m "ci: add typecheck/lint/test/build/check-secrets workflow"
-git push origin main
+git push -u origin HEAD
+gh pr create --fill --base main
+# The workflow triggers on `pull_request`; `gh run watch` only finds a run AFTER the PR exists.
 gh run watch
 ```
 
-Expected: the run completes green.
+Expected: the run completes green. If `gh run watch` exits immediately saying "no runs in progress", give the Actions trigger a few seconds and re-run — GitHub queues workflows on PR open, not on push for feature branches.
 
 ---
 
@@ -3225,7 +3441,9 @@ jobs:
 ```bash
 git add .github/workflows/e2e.yml
 git commit -m "ci: run E2E suite against Vercel preview deployments"
-git push origin main
+git push -u origin HEAD
+# Per Workflow Contract: open a PR against main — never push main directly.
+# gh pr create --fill --base main
 ```
 
 The workflow runs on the **next** PR's Preview deployment. For a first smoke test, open a no-op PR (e.g., a typo fix in README after Task 24) and verify E2E runs green against the Preview URL.
@@ -3390,7 +3608,9 @@ Closes #
 ```bash
 git add .github/workflows/claude.yml .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md
 git commit -m "ci: Claude Code Action, issue/PR templates, enable CodeQL default scan"
-git push origin main
+git push -u origin HEAD
+# Per Workflow Contract: open a PR against main — never push main directly.
+# gh pr create --fill --base main
 ```
 
 - [ ] **Step 6: Smoke-test Claude Code Action**
@@ -3613,7 +3833,9 @@ THE SOFTWARE.
 ```bash
 git add README.md LICENSE
 git commit -m "docs: README covering stack, integration, mapping, testing, and deploy"
-git push origin main
+git push -u origin HEAD
+# Per Workflow Contract: open a PR against main — never push main directly.
+# gh pr create --fill --base main
 ```
 
 ---
@@ -3670,14 +3892,19 @@ gh pr merge --squash --delete-branch
 
 Wait for the production deploy to complete. Visit `https://ticto-ebulicao-lp.vercel.app/` — confirm the LP loads and the form still works end-to-end on production.
 
-- [ ] **Step 6: Final commit on main** (if README edit was made on `main`)
+- [ ] **Step 6: Final README edit** (if the screencast URL still needs linking)
+
+The README edit still has to flow through a PR — `main` is branch-protected with `enforce_admins: true`, so even as the repo owner you cannot push straight to it.
 
 ```bash
 git checkout main
 git pull --ff-only
+git checkout -b docs/screencast-url
 git add README.md
 git commit -m "docs: link final screencast URL"
-git push origin main
+git push -u origin HEAD
+gh pr create --fill --base main
+# Merge via gh pr merge --squash --delete-branch once CI is green.
 ```
 
 - [ ] **Step 7: Run the delivery checklist from spec §13**
