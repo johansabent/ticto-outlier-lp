@@ -28,6 +28,12 @@ export type LeadEvent =
       datacrazy_status: number;
       datacrazy_lead_id: string | number | null;
       timing_ms: number;
+      // PII-redacted hints per AGENTS.md Core Invariant: masked-only, never
+      // the full email/phone/name. Full values are already in Datacrazy;
+      // logs get shape-preserving placeholders for observability.
+      email_hint: string;
+      phone_hint: string;
+      name_hint: string;
     }
   | {
       event: 'lead.failed';
@@ -43,6 +49,15 @@ export function redactEmail(raw: string): string {
   const at = input.indexOf('@');
   if (at < 1) return '***';
   return `${input[0]}***${input.slice(at)}`;
+}
+
+export function redactName(raw: string): string {
+  // Matches the email redaction shape (`j***@domain.com`): first char + `***`.
+  // Previous `${firstName} ***` pattern leaked the full first name and — for
+  // single-word `nome` submissions — the entire name.
+  const s = (raw ?? '').trim();
+  if (!s) return '';
+  return `${s[0]}***`;
 }
 
 export function redactPhone(raw: string): string {
