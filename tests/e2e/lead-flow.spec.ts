@@ -164,20 +164,15 @@ test.describe('Lead flow — E2E', () => {
       data: body,
     });
 
-    // With the dev `DATACRAZY_API_TOKEN`, the outbound request to Datacrazy
-    // will be rejected by the real service — a 200 means the mock was hit
-    // (only possible if the fetch routes through the browser, which it
-    // shouldn't), and a 500 with `crm_failed` means the handler authenticated
-    // the body, parsed fields, mapped UTMs, built the Datacrazy payload, and
-    // made it all the way to the outbound POST. Both are valid success
-    // signals for this black-box E2E — what we are proving here is that the
-    // full handler pipeline ran past HMAC verification.
-    expect([200, 500]).toContain(res.status());
-    const json = (await res.json()) as { error?: string; ok?: boolean };
-    if (res.status() === 200) {
-      expect(json.ok).toBe(true);
-    } else {
-      expect(json.error).toBe('crm_failed');
-    }
+    // The playwright.config.ts webServer forces DATACRAZY_API_TOKEN to the
+    // deterministic literal 'e2e-test-token'. Datacrazy rejects that token,
+    // so the outbound POST returns a non-2xx, and our handler maps that to
+    // 500 { error: 'crm_failed' }. A 500 here proves the full handler
+    // pipeline ran past HMAC verification, JSON parse, parseAnswers,
+    // mapUtms, buildDatacrazyPayload, and into postLead. Because env is
+    // forced-deterministic, we can assert the exact 500 status.
+    expect(res.status()).toBe(500);
+    const json = (await res.json()) as { error?: string };
+    expect(json.error).toBe('crm_failed');
   });
 });
