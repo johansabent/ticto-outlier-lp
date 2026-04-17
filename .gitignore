@@ -61,3 +61,14 @@ typeform_embed_pkg/
 
 # visual audit artefacts (screenshots + diagnostics; never shipped)
 visual-audit-out/
+
+# Playwright MCP scratch folder (snapshots from interactive browser sessions)
+.playwright-mcp/
+
+# one-off screenshot captures at repo root (manual smoke-check output)
+*.verified.png
+lp-*.png
+
+# system / agent leftovers
+.tmp/
+/tmp/
