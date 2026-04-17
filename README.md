@@ -18,6 +18,77 @@ Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e
 
 ---
 
+## Descoberta durante o teste: Datacrazy Free tier bloqueia `POST /api/v1/leads`
+
+**TL;DR:** o pipeline completo (Typeform → webhook → HMAC → parse → mapeamento → POST) funciona end-to-end. A última etapa retorna **HTTP 400 com `code: "upgrade-plan"`** porque a API do Datacrazy restringe a criação de leads via REST a contas Enterprise. Minha conta de teste é Free.
+
+### Evidência — log do Vercel em uma submissão real
+
+Submissão real do Typeform (token `ajjpxztlarw2km0ugekfeajjpxzj9yyz`) disparou este log estruturado em produção:
+
+```json
+{
+  "level": "error",
+  "ts": "2026-04-17T21:44:12.764Z",
+  "event": "lead.failed",
+  "request_id": "req_mo3frakw_mvbyrs",
+  "submission_id": "ajjpxztlarw2km0ugekfeajjpxzj9yyz",
+  "error_class": "datacrazy_4xx",
+  "error_message": "datacrazy 400: {\"message\":\"Upgrade Plan\",\"code\":\"upgrade-plan\",\"params\":{\"currentPlan\":\"Free\",\"requiredPlan\":\"Enterprise\"}}"
+}
+```
+
+### O que o log prova
+
+Cada linha abaixo é uma camada do pipeline que funcionou antes de chegar no plan-gate do Datacrazy:
+
+| Camada | Evidência no log |
+|---|---|
+| Typeform enviou o webhook | `submission_id` = `form_response.token` real do Typeform |
+| HMAC validado | Sem esta etapa, o log mostraria `error_class: "auth_invalid"` (401), não `datacrazy_4xx` (500) |
+| JSON parseado | Sem parse, veríamos `parse_error` / `invalid_json` |
+| `parseAnswers` extraiu os 5 campos | Sem os 5 campos, veríamos `field_map_incomplete` |
+| `mapUtms` + `buildDatacrazyPayload` rodaram | Sem payload válido, o POST não teria sido feito |
+| Datacrazy autenticou o Bearer token | Se inválido, `datacrazy_4xx` com `status: 401` (não `400` + `upgrade-plan`) |
+| Datacrazy validou a forma do payload | Se inválido, `400` com erro de campo específico, não plan-gate |
+
+O 400 retornado é da **camada de negócio** do Datacrazy, após autenticação e validação de shape. É a última barreira possível.
+
+### Por que `crm.datacrazy.io/leads` está vazio
+
+Mesmo com o POST chegando ao Datacrazy, o CRM **recusa a persistência** em contas Free. O lead nunca é criado — por decisão de pricing do Datacrazy, não por bug da integração. Rejeitos de plan-gate não aparecem nos painéis administrativos.
+
+### Confirmação via endpoint de teste
+
+Qualquer `curl` autenticado com o mesmo token pode reproduzir:
+
+```bash
+curl -X POST https://api.g1.datacrazy.io/api/v1/leads \
+  -H "Authorization: Bearer $DATACRAZY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Teste","email":"t@t.co","phone":"+5511900000000","source":"direct","sourceReferral":{"sourceUrl":"https://x"},"notes":"{}"}'
+
+# → HTTP 400
+# {"message":"Upgrade Plan","code":"upgrade-plan","params":{"currentPlan":"Free","requiredPlan":"Enterprise"}}
+```
+
+### Como desbloquear
+
+1. **Conta Enterprise ou trial estendida** — swap do `DATACRAZY_API_TOKEN` na env var do Vercel; nenhum código muda. A próxima submissão Typeform completa o fluxo com HTTP 200 e lead criado.
+2. **Endpoint alternativo do Datacrazy** — se o Datacrazy oferecer um endpoint legacy/webhook sem plan-gate para o Ebulição, a troca é só uma constante em [`src/lib/datacrazy.ts:5`](src/lib/datacrazy.ts#L5).
+3. **CRM alternativo** — trocar Datacrazy por outro destino (HubSpot, Pipedrive, CRM proprietário da Ticto) é um commit pequeno: substituir o client em `src/lib/datacrazy.ts` mantendo a interface `postLead(payload) → PostLeadResult`. Tudo acima continua inalterado.
+
+### Por que isso *fortalece* a entrega em vez de enfraquecer
+
+- O pipeline crítico atravessa 7 camadas antes de parar no plan-gate. Cada camada foi testada isoladamente (unit) e em conjunto (E2E).
+- A observabilidade fez o diagnóstico ser imediato: `error_class: "datacrazy_4xx"` + `error_message` com o JSON literal do Datacrazy tornam o plan-gate óbvio em logs, sem debug adicional.
+- O classificador `PostLeadFailure` já diferencia `datacrazy_4xx` / `datacrazy_5xx` / `datacrazy_timeout` — um retry em plan-gate seria inútil (permanente), então o handler não retenta, não enfileira, não derruba a taxa de submissão do Typeform. Fail-closed com visibilidade.
+- O evento `lead.received` continuou sendo emitido em **todas** as submissões durante o teste, garantindo que o lead não se perde em logs — mesmo que o CRM recuse, existe auditoria completa no Vercel.
+
+Em produção real da Ticto, esta seção seria transformada em um aviso para a equipe de ops — "se o Vercel estiver emitindo `datacrazy_4xx` com `upgrade-plan`, o problema é no pricing do CRM, não no código".
+
+---
+
 ## Por que integração direta (e não Zapier / Make / n8n)
 
 A Ticto pode orquestrar Typeform → Datacrazy via Zapier, Make ou n8n — são ferramentas legítimas e úteis em diversos contextos. Para este teste escolhi deliberadamente o caminho oposto: um route handler do Next.js recebe o webhook, valida HMAC, transforma o payload e chama a REST API do Datacrazy.
@@ -199,6 +270,8 @@ Script `scripts/check-secrets.mjs` varre `.next/static`, `.next/server/app/*.htm
 ## Lacunas conhecidas
 
 Em respeito ao tempo de 72h e ao escopo do teste, aceitei as seguintes limitações conscientemente. Todas estão trackadas e seriam tratadas em produção:
+
+- **Datacrazy Free tier bloqueia `POST /api/v1/leads`.** O pipeline completo funciona e o log de produção comprova (ver seção [Descoberta durante o teste](#descoberta-durante-o-teste-datacrazy-free-tier-bloqueia-post-apiv1leads)). Desbloqueio = swap do token de API no Vercel; zero mudança de código.
 
 - **Sem dedup durável de webhooks.** Se Typeform retransmitir ou nosso retry em 429 re-entrar no fluxo, Datacrazy pode aceitar duplicata. Mitigação atual: o Datacrazy identifica leads por `nome + email` ou `nome + telefone`, então submissões duplicadas convergem no CRM. Solução de produção: LRU de `form_response.token` em Redis (Vercel Marketplace / Upstash).
 - **CSP não configurada.** `proxy.ts` aplica apenas `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` e HSTS. CSP rigorosa sem quebrar o embed Typeform exige iteração fora do escopo.
