@@ -14,13 +14,15 @@ A plataforma de deploy é a **Vercel**, conectada diretamente ao repositório p�
 ## 3. Checklist de Lançamento (Release / PR)
 Antes de mesclar (merge) na `main`, todo PR deve passar pelos checks obrigatórios (enforced por branch protection):
 1.  Type-check e lint limpos (`pnpm typecheck`, `pnpm lint`).
-2.  Testes unitários e E2E passando (Vitest local + Playwright contra o Preview Deployment).
+2.  Testes unitários e E2E passando (`pnpm test`, `pnpm e2e`).
 3.  `pnpm check:secrets` limpo (guarda contra vazamento de chaves server-only no bundle client).
 4.  Validação manual do envio de UTMs no Preview antes de aprovar o merge.
 5.  Design condizente com as aprovações pixel-perfect.
+6.  Acessibilidade (WCAG 2.2 AA) e navegação via teclado validadas.
+7.  Verificação de HMAC no webhook e mascaramento de PII em logs (conforme Core Invariants em `AGENTS.md`).
 
 ## 4. Geração de Tags (Opcional, porém prático)
-Após entregas de grande marcos operacionais (como "1.0.0 - Entrega Desafio Técnico"), gera-se um GitHub Release usando as tags clássicas de SemVer:
+Após entregas de grandes marcos operacionais (como "1.0.0 - Entrega Desafio Técnico"), gera-se um GitHub Release usando as tags clássicas de SemVer:
 ```bash
 git tag -a v1.0.0 -m "Entrega Final: Teste Técnico"
 git push origin v1.0.0
