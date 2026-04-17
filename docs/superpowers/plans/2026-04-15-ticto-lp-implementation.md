@@ -760,7 +760,12 @@ The original scanner only walks `.next` + `out`. The 2026-04-15/16 webhook-secre
 // Repo-source scan (second phase) — additive to the existing client-bundle check above.
 import { createHash } from 'node:crypto';
 
-const SOURCE_ROOTS = ['docs', 'src', 'tests', '.github'];
+// Scans the whole tree except build output / tooling caches / the scanner itself.
+// `scripts/` is in scope — security/build helpers are prime places to accidentally
+// hard-code a token — but the scanner excludes its own file so the deny-list
+// hash prefixes above never flag themselves.
+const SOURCE_ROOTS = ['docs', 'src', 'tests', '.github', 'scripts'];
+const SCANNER_SELF_PATH = 'scripts/check-secrets.mjs';
 
 // Known burned values live OUTSIDE this file — storing the literal here would
 // re-leak the exact thing we scrubbed, and would make the scanner flag its own
@@ -787,7 +792,10 @@ const SECRET_PATTERNS = [
   { name: 'Slack bot token', re: /\bxoxb-[0-9]+-[0-9]+-[A-Za-z0-9]{24,}\b/ },
 ];
 
-const SOURCE_INCLUDE = /\.(m?[jt]sx?|json|md|mdx|ya?ml|toml|html|css|env\..*|txt)$/;
+// File-type allowlist. `\.env` without a suffix is its own file, not an extension,
+// so it needs to be matched via the anchored alternative — otherwise a bare `.env`
+// is silently skipped and a bare-file leak sails through.
+const SOURCE_INCLUDE = /(\.env(\..*)?$)|\.(m?[jt]sx?|json|md|mdx|ya?ml|toml|html|css|txt)$/;
 const SOURCE_EXCLUDE = /(^|\/)(node_modules|\.next|out|coverage|test-results|playwright-report|\.git|\.vercel|\.pnpm-cache|\.npm-cache)(\/|$)/;
 
 // Sliding-window scan for burned-value hashes. We hash every token that looks
@@ -812,7 +820,9 @@ async function sourceScan() {
     try { entries = await readdir(dir); } catch { return; }
     for (const e of entries) {
       const p = join(dir, e);
-      if (SOURCE_EXCLUDE.test(p.replace(/\\/g, '/'))) continue;
+      const normalized = p.replace(/\\/g, '/');
+      if (SOURCE_EXCLUDE.test(normalized)) continue;
+      if (normalized === SCANNER_SELF_PATH) continue; // scanner can't flag itself
       const s = await stat(p);
       if (s.isDirectory()) { await walkSource(p); continue; }
       if (!SOURCE_INCLUDE.test(p)) continue;
@@ -835,17 +845,27 @@ async function sourceScan() {
   for (const root of SOURCE_ROOTS) await walkSource(root);
   return findings;
 }
-
-// Call this after the client-bundle scan, before the success log:
-const srcHits = await sourceScan();
-if (srcHits.length > 0) {
-  console.error('SECRET LEAK DETECTED in repo source:');
-  for (const h of srcHits) console.error(`  ${h.file} -> ${h.hit}`);
-  process.exit(1);
-}
 ```
 
-**Why hashes, not literals:** writing the burned plaintext into the scanner would (a) re-publish it in the public repo and (b) make the scanner flag its own code forever. The 16-char sha256 prefix is irreversible and non-colliding in practice for short strings (~64 bits of entropy). If a burned value is rotated, add its hash prefix here; if it's discovered that the old prefix ever had a false-positive collision, swap to a 32-char prefix. `SOURCE_ROOTS` deliberately excludes `scripts/` so the scanner cannot flag itself regardless of false-positive risk. Rewire `main()` so both phases run and both contribute to the exit code.
+**Rewire `main()` (shown inline, not as top-level side effects)** so both phases run and a hit from either flips the exit code. Do not paste `await sourceScan()` at module top level — it would run on import and short-circuit whatever loads the module next. The final `main()` should look like:
+
+```javascript
+async function main() {
+  const clientHits = await clientBundleScan(); // existing scan from Step 13
+  const sourceHits = await sourceScan();       // new scan from this step
+  const hits = [...clientHits, ...sourceHits];
+  if (hits.length > 0) {
+    console.error('SECRET LEAK DETECTED:');
+    for (const h of hits) console.error(`  ${h.file} -> ${h.hit ?? h.key}`);
+    process.exit(1);
+  }
+  console.log('check:secrets OK — no forbidden patterns found in bundle or source.');
+}
+
+main().catch((e) => { console.error(e); process.exit(2); });
+```
+
+**Why hashes, not literals:** writing the burned plaintext into the scanner would (a) re-publish it in the public repo and (b) make the scanner flag its own code forever. The 16-char sha256 prefix is irreversible and non-colliding in practice for short strings (~64 bits of entropy). If a burned value is rotated, add its hash prefix here; if it's discovered that the old prefix ever had a false-positive collision, swap to a 32-char prefix. `SOURCE_ROOTS` includes `scripts/` (security/build helpers are prime places to hard-code a token), and the single exclusion `SCANNER_SELF_PATH` keeps the scanner from flagging its own deny-list.
 
 - [ ] **Step 14: Write a throwaway sanity test**
 
@@ -3334,18 +3354,18 @@ jobs:
 
 > Placeholder env values are injected only for `pnpm build` so `getServerEnv()` doesn't fail-fast during the build. Real values live in Vercel Dashboard, never in CI.
 
-- [ ] **Step 2: Commit + push and watch the CI run**
+- [ ] **Step 2: Commit, push, open PR, then watch the CI run**
 
 ```bash
 git add .github/workflows/ci.yml
 git commit -m "ci: add typecheck/lint/test/build/check-secrets workflow"
 git push -u origin HEAD
-# Per Workflow Contract: open a PR against main — never push main directly.
-# gh pr create --fill --base main
+gh pr create --fill --base main
+# The workflow triggers on `pull_request`; `gh run watch` only finds a run AFTER the PR exists.
 gh run watch
 ```
 
-Expected: the run completes green.
+Expected: the run completes green. If `gh run watch` exits immediately saying "no runs in progress", give the Actions trigger a few seconds and re-run — GitHub queues workflows on PR open, not on push for feature branches.
 
 ---
 
@@ -3857,16 +3877,19 @@ gh pr merge --squash --delete-branch
 
 Wait for the production deploy to complete. Visit `https://ticto-ebulicao-lp.vercel.app/` — confirm the LP loads and the form still works end-to-end on production.
 
-- [ ] **Step 6: Final commit on main** (if README edit was made on `main`)
+- [ ] **Step 6: Final README edit** (if the screencast URL still needs linking)
+
+The README edit still has to flow through a PR — `main` is branch-protected with `enforce_admins: true`, so even as the repo owner you cannot push straight to it.
 
 ```bash
 git checkout main
 git pull --ff-only
+git checkout -b docs/screencast-url
 git add README.md
 git commit -m "docs: link final screencast URL"
 git push -u origin HEAD
-# Per Workflow Contract: open a PR against main — never push main directly.
-# gh pr create --fill --base main
+gh pr create --fill --base main
+# Merge via gh pr merge --squash --delete-branch once CI is green.
 ```
 
 - [ ] **Step 7: Run the delivery checklist from spec §13**
