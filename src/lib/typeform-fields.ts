@@ -16,13 +16,11 @@ export type TypeformAnswer = {
   choice?: { label: string; ref: string };
 };
 
-export type AnswerByRef = {
-  nome: string;
-  cpf: string;
-  email: string;
-  telefone: string;
-  sells_online: string; // choice.label (human-readable)
-};
+// Derived from FIELD_REFS so adding a new required field in the registry is
+// automatically reflected in the parse result shape — no manual sync needed.
+// sells_online is `choice.label` (human-readable) at the value level; the
+// per-field type metadata lives on FIELD_REFS, not here.
+export type AnswerByRef = Record<keyof typeof FIELD_REFS, string>;
 
 function extractValue(answer: TypeformAnswer): string | undefined {
   switch (answer.type) {
