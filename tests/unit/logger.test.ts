@@ -21,6 +21,15 @@ describe('lib/logger', () => {
     expect(redactPhone('abc')).toBe('***');
   });
 
+  it('redactPhone emits partial digits without fabrication for short inputs', () => {
+    // Guards against the prior `padStart(4, digits)` idiom which would have
+    // turned '5' into '***-5555' and '12' into '***-1212', fabricating
+    // digits that never existed and hurting log correlation.
+    expect(redactPhone('5')).toBe('***-5');
+    expect(redactPhone('12')).toBe('***-12');
+    expect(redactPhone('123')).toBe('***-123');
+  });
+
   it('logger.info writes a single-line JSON document with event + timestamp', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const evt: LeadEvent = {

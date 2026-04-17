@@ -48,8 +48,11 @@ export function redactPhone(raw: string): string {
   if (!raw) return '';
   const digits = raw.replace(/\D/g, '');
   if (digits.length < 1) return '***';
-  const tail = digits.slice(-4).padStart(4, digits);
-  return `***-${tail}`;
+  // For short inputs, emit the actual digits after the prefix rather than
+  // padding-by-repeat (e.g. "5" would have become "***-5555", fabricating
+  // digits that never existed and hurting log correlation).
+  if (digits.length < 4) return `***-${digits}`;
+  return `***-${digits.slice(-4)}`;
 }
 
 function write(level: 'info' | 'warn' | 'error', evt: LeadEvent): void {
