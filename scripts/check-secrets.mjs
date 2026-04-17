@@ -4,9 +4,7 @@ import { join } from 'node:path';
 
 const FORBIDDEN = [
   'DATACRAZY_API_TOKEN',
-  'YAYFORMS_WEBHOOK_SECRET',
-  'WEBHOOK_AUTH_MODE',
-  'YAYFORMS_FIELD_MAP',
+  'TYPEFORM_WEBHOOK_SECRET',
 ];
 
 const SCAN_ROOTS = ['.next/static', '.next/server/app', 'out'];
