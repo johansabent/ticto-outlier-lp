@@ -127,6 +127,17 @@ test.describe('Lead flow — E2E', () => {
     page,
     request,
   }) => {
+    // Skip when running against a remote deployment (Vercel Preview/Prod).
+    // Remote envs use the real TYPEFORM_WEBHOOK_SECRET, not the hardcoded
+    // 'dev-placeholder-secret' that this test signs with — HMAC would mismatch
+    // and the handler would return 401, not the 500 we assert. We can't ship
+    // the real secret into CI, so this test is local-env-only. The negative
+    // auth-rejection tests above still run against Preview and cover the
+    // handler's HMAC verification path end-to-end.
+    test.skip(
+      !!process.env.PLAYWRIGHT_TEST_BASE_URL,
+      'Signed-payload test requires deterministic local webServer env; skip against remote deployments.',
+    );
     // Install a Playwright route mock for Datacrazy on the browser context.
     // NOTE (deviation from plan): this mock only catches requests issued from
     // the browser process. The actual `/api/lead` handler runs inside the
