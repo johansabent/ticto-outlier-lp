@@ -10,8 +10,35 @@ import { logger, redactEmail, redactPhone } from '@/lib/logger';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Typeform payloads in practice are ~5-20KB. Cap well above that (64KB) to
+// reject unauthenticated large-body DoS without truncating legitimate
+// deliveries. Check runs before arrayBuffer() materializes anything.
+const MAX_BODY_BYTES = 64 * 1024;
+
+// Landing URL validation: `hidden.landing_page` is populated client-side
+// from localStorage (see <TypeformEmbed>), which means a page visitor can
+// stuff arbitrary strings into it before submitting the form. Cap + URL-
+// validate at the trust boundary so Datacrazy records don't accumulate
+// garbage. Lenient-with-fallback: invalid values fall back to NEXT_PUBLIC_SITE_URL
+// rather than rejecting the lead.
+const MAX_LANDING_URL_LENGTH = 2048;
+
 function newRequestId(): string {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sanitizeLandingUrl(
+  candidate: string | undefined,
+  fallback: string,
+): string {
+  if (!candidate || candidate.length > MAX_LANDING_URL_LENGTH) return fallback;
+  try {
+    const u = new URL(candidate);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return fallback;
+    return u.toString();
+  } catch {
+    return fallback;
+  }
 }
 
 export async function POST(req: Request) {
@@ -20,12 +47,36 @@ export async function POST(req: Request) {
   const serverEnv = getServerEnv();
   const clientEnv = getClientEnv();
 
+  // 0. Body-size guard — rejects oversized uploads before HMAC computation
+  // bills CPU on attacker-controlled bytes. content-length can lie, but any
+  // sane client sets it; bodies that spoof past the check still hit the
+  // same guard via Buffer length below.
+  const declaredLen = Number(req.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
+    logger.warn({
+      event: 'lead.failed',
+      request_id: requestId,
+      error_class: 'parse_error',
+      error_message: `payload_too_large: declared ${declaredLen}`,
+    });
+    return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+  }
+
   // 1. Read raw body bytes BEFORE JSON.parse — HMAC must run on exact bytes.
   // Buffer.from(arrayBuffer) preserves the exact bytes Typeform signed; a
   // string round-trip (req.text()) would survive here because our validator
   // re-encodes to utf8, but Buffer keeps the plan's stated intent explicit
   // and avoids any future drift if we change the HMAC path.
   const bodyBytes = Buffer.from(await req.arrayBuffer());
+  if (bodyBytes.byteLength > MAX_BODY_BYTES) {
+    logger.warn({
+      event: 'lead.failed',
+      request_id: requestId,
+      error_class: 'parse_error',
+      error_message: `payload_too_large: actual ${bodyBytes.byteLength}`,
+    });
+    return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+  }
 
   // 2. Verify Typeform HMAC signature on exact bytes.
   const sigHeader = req.headers.get('typeform-signature');
@@ -44,13 +95,23 @@ export async function POST(req: Request) {
   });
 
   if (!authResult.valid) {
+    // Split status by reason: post-HMAC structural failures (malformed_payload)
+    // mean the sender authenticated but sent a broken body. Typeform treats
+    // 401 as permanent (stops retrying) and 400 as "don't retry, fix the
+    // payload" — semantically correct for each case.
+    const status = authResult.reason === 'malformed_payload' ? 400 : 401;
+    const errorClass =
+      authResult.reason === 'malformed_payload' ? 'parse_error' : 'auth_invalid';
     logger.error({
       event: 'lead.failed',
       request_id: requestId,
-      error_class: 'auth_invalid',
+      error_class: errorClass,
       error_message: authResult.reason,
     });
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: status === 400 ? 'malformed_payload' : 'unauthorized' },
+      { status },
+    );
   }
 
   // 3. Parse body only after HMAC passes. Convert authenticated bytes to
@@ -118,10 +179,12 @@ export async function POST(req: Request) {
   // points at a Typeform CDN, never at the visitor's landing page.
   // `form_response.hidden.landing_page` is injected by <TypeformEmbed> from
   // first-touch localStorage, so it carries the real visitor URL including
-  // query string. Fall back to NEXT_PUBLIC_SITE_URL (client env — validated
-  // as a URL via zod) only if the hidden field is absent.
-  const landingUrl =
-    body.form_response.hidden?.landing_page ?? clientEnv.NEXT_PUBLIC_SITE_URL;
+  // query string. Validate + fall back to NEXT_PUBLIC_SITE_URL on invalid or
+  // absent value — visitors can stuff arbitrary strings into localStorage.
+  const landingUrl = sanitizeLandingUrl(
+    body.form_response.hidden?.landing_page,
+    clientEnv.NEXT_PUBLIC_SITE_URL,
+  );
 
   // 6. Build Datacrazy payload.
   const datacrazyPayload = buildDatacrazyPayload({
@@ -132,6 +195,12 @@ export async function POST(req: Request) {
   });
 
   // 7. POST to Datacrazy (sync — no waitUntil needed for 72h scope).
+  // KNOWN GAP: no idempotency dedup. If postLead's 429 retry or Typeform's
+  // own retry (triggered by our 5xx) re-enters this flow, Datacrazy may
+  // accept duplicate leads keyed on `form_response.token`. A KV/Redis-backed
+  // token LRU would close this; it's out of the 72h scope per the plan
+  // (Task 8 commit message deferred event_id dedup to "when persistence is
+  // provisioned"). Accept the duplicate risk for now.
   const crmT0 = Date.now();
   const crm = await postLead(datacrazyPayload);
   const crmMs = Date.now() - crmT0;
