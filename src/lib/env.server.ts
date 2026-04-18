@@ -18,7 +18,7 @@ function buildServerSchema(isProduction: boolean) {
       z
         .string()
         .trim()
-        .url('DATACRAZY_LEADS_ENDPOINT must be an https URL')
+        .url('DATACRAZY_LEADS_ENDPOINT must be a valid URL')
         .refine((u) => u.startsWith('https://'), {
           message: 'DATACRAZY_LEADS_ENDPOINT must use https',
         })

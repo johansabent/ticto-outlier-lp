@@ -112,7 +112,18 @@ describe('lib/datacrazy', () => {
       new Response(JSON.stringify({ id: 'lead_1' }), { status: 201 }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.resetModules();
+    const { postLead } = await import('@/lib/datacrazy');
+    await postLead(payload);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.g1.datacrazy.io/api/v1/leads');
+  });
+
+  it('falls back to the default endpoint when DATACRAZY_LEADS_ENDPOINT is unset', async () => {
+    delete process.env.DATACRAZY_LEADS_ENDPOINT;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'lead_2' }), { status: 201 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
     const { postLead } = await import('@/lib/datacrazy');
     await postLead(payload);
     const [url] = fetchMock.mock.calls[0];
