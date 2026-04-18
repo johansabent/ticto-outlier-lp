@@ -1,11 +1,14 @@
 import { getServerEnv } from '@/lib/env.server';
-import type { DatacrazyLeadPayload } from '@/lib/utm-mapping';
+import type { HubspotContactPayload } from '@/lib/utm-mapping';
 import type { ErrorClass } from '@/lib/logger';
+
+const CONTACTS_PATH = '/crm/v3/objects/contacts';
 
 export type PostLeadSuccess = {
   ok: true;
   status: number;
-  leadId: string | number | null;
+  leadId: string | null;
+  duplicate?: boolean;
 };
 
 export type PostLeadFailure = {
@@ -23,8 +26,8 @@ export interface PostLeadOptions {
 }
 
 function classify(status: number): ErrorClass {
-  if (status >= 500) return 'datacrazy_5xx';
-  return 'datacrazy_4xx';
+  if (status >= 500) return 'hubspot_5xx';
+  return 'hubspot_4xx';
 }
 
 async function safeRead(res: Response): Promise<string> {
@@ -36,18 +39,16 @@ async function safeRead(res: Response): Promise<string> {
   }
 }
 
-function extractLeadId(body: unknown): string | number | null {
+function extractContactId(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
-  const obj = body as Record<string, unknown>;
-  for (const key of ['id', 'leadId', 'lead_id']) {
-    const v = obj[key];
-    if (typeof v === 'string' || typeof v === 'number') return v;
-  }
+  const { id } = body as { id?: unknown };
+  if (typeof id === 'string') return id;
+  if (typeof id === 'number') return String(id);
   return null;
 }
 
 async function doPost(
-  payload: DatacrazyLeadPayload,
+  payload: HubspotContactPayload,
   token: string,
   endpoint: string,
   options: PostLeadOptions,
@@ -72,16 +73,18 @@ async function doPost(
 }
 
 export async function postLead(
-  payload: DatacrazyLeadPayload,
+  payload: HubspotContactPayload,
   options: PostLeadOptions = {},
 ): Promise<PostLeadResult> {
-  const { DATACRAZY_API_TOKEN, DATACRAZY_LEADS_ENDPOINT } = getServerEnv();
+  const { HUBSPOT_PRIVATE_APP_TOKEN, HUBSPOT_API_BASE } = getServerEnv();
+  const endpoint = `${HUBSPOT_API_BASE}${CONTACTS_PATH}`;
+
   let attempt = 0;
   while (attempt < 2) {
     attempt += 1;
     let res: Response;
     try {
-      res = await doPost(payload, DATACRAZY_API_TOKEN, DATACRAZY_LEADS_ENDPOINT, options);
+      res = await doPost(payload, HUBSPOT_PRIVATE_APP_TOKEN, endpoint, options);
     } catch (err) {
       // AbortError may be a DOMException (jsdom, browsers) that is not an
       // `instanceof Error` in some runtimes. Detect by name only, guarding
@@ -91,31 +94,48 @@ export async function postLead(
           ? (err as { name?: unknown }).name
           : undefined;
       if (name === 'AbortError') {
-        return { ok: false, status: 0, errorClass: 'datacrazy_timeout', bodySnippet: '' };
+        return { ok: false, status: 0, errorClass: 'hubspot_timeout', bodySnippet: '' };
       }
       return {
         ok: false,
         status: 0,
-        errorClass: 'datacrazy_5xx',
+        errorClass: 'hubspot_5xx',
         bodySnippet: err instanceof Error ? err.message : String(err),
       };
     }
 
     if (res.status === 429 && attempt < 2) {
+      // HubSpot sends seconds (integer). HTTP spec also permits an HTTP-date string;
+      // Number() of a date string is NaN, so we default to 1s in that case.
       const retryAfter = Number(res.headers.get('retry-after') ?? '1');
-      const waitMs = Math.max(0, Math.min(Number.isFinite(retryAfter) ? retryAfter : 1, 10)) * 1000;
+      const waitMs =
+        Math.max(0, Math.min(Number.isFinite(retryAfter) ? retryAfter : 1, 10)) * 1000;
       await new Promise((r) => setTimeout(r, waitMs));
       continue;
     }
 
+    // HubSpot returns 409 when a contact with this email already exists.
+    // Treat as idempotent success so repeated Typeform retries don't 500.
+    // leadId is null because obtaining the existing id requires a second
+    // GET /contacts/{email}?idProperty=email, which teste técnico scope
+    // does not require.
+    if (res.status === 409) {
+      return { ok: true, status: 409, leadId: null, duplicate: true };
+    }
+
     if (res.ok) {
       const body = await res.json().catch(() => null);
-      return { ok: true, status: res.status, leadId: extractLeadId(body) };
+      return { ok: true, status: res.status, leadId: extractContactId(body) };
     }
 
     const snippet = await safeRead(res);
-    return { ok: false, status: res.status, errorClass: classify(res.status), bodySnippet: snippet };
+    return {
+      ok: false,
+      status: res.status,
+      errorClass: classify(res.status),
+      bodySnippet: snippet,
+    };
   }
 
-  return { ok: false, status: 429, errorClass: 'datacrazy_4xx', bodySnippet: 'exhausted retries' };
+  return { ok: false, status: 429, errorClass: 'hubspot_4xx', bodySnippet: 'exhausted retries' };
 }
