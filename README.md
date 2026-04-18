@@ -282,7 +282,7 @@ Script `scripts/check-secrets.mjs` varre `.next/static`, `.next/server/app/*.htm
 
 Em respeito ao tempo de 72h e ao escopo do teste, aceitei as seguintes limitações conscientemente. Todas estão trackadas e seriam tratadas em produção:
 
-- **Datacrazy Free tier bloqueia `POST /api/v1/leads`.** O pipeline completo funciona e o log de produção comprova (ver seção [Descoberta durante o teste](#descoberta-durante-o-teste-datacrazy-free-tier-bloqueia-post-apiv1leads)). Desbloqueio = swap do token de API no Vercel; zero mudança de código.
+- **Datacrazy Free tier bloqueia a criação de leads via API.** Ambos os endpoints de criação documentados (`POST /api/v1/leads` e `POST /api/v1/leads/additional-fields`) retornam `code: "upgrade-plan"` — o gate é resource-level no billing da plataforma, não específico de rota. O pipeline completo funciona até a última camada; ver seção [Descoberta durante o teste](#descoberta-durante-o-teste-o-plan-gate-do-datacrazy-é-resource-level-não-route-specific) para os dois logs lado a lado. Desbloqueio = swap do `DATACRAZY_API_TOKEN` no Vercel para uma conta Enterprise; zero mudança de código.
 
 - **Sem dedup durável de webhooks.** Se Typeform retransmitir ou nosso retry em 429 re-entrar no fluxo, Datacrazy pode aceitar duplicata. Mitigação atual: o Datacrazy identifica leads por `nome + email` ou `nome + telefone`, então submissões duplicadas convergem no CRM. Solução de produção: LRU de `form_response.token` em Redis (Vercel Marketplace / Upstash).
 - **CSP não configurada.** `proxy.ts` aplica apenas `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` e HSTS. CSP rigorosa sem quebrar o embed Typeform exige iteração fora do escopo.
