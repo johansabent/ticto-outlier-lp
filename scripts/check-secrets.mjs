@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const FORBIDDEN = [
-  'DATACRAZY_API_TOKEN',
+  'HUBSPOT_PRIVATE_APP_TOKEN',
   'TYPEFORM_WEBHOOK_SECRET',
 ];
 

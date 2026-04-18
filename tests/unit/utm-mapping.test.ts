@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapUtms, buildDatacrazyPayload } from '@/lib/utm-mapping';
+import { mapUtms, buildHubspotContactPayload } from '@/lib/utm-mapping';
 import fixture from '../fixtures/typeform-webhook.json';
 
 describe('lib/utm-mapping — mapUtms', () => {
@@ -26,7 +26,7 @@ describe('lib/utm-mapping — mapUtms', () => {
   });
 });
 
-describe('lib/utm-mapping — buildDatacrazyPayload', () => {
+describe('lib/utm-mapping — buildHubspotContactPayload', () => {
   const answers = {
     nome: 'João Silva',
     cpf: '12345678900',
@@ -45,38 +45,67 @@ describe('lib/utm-mapping — buildDatacrazyPayload', () => {
   };
   const landingUrl = 'https://ticto-ebulicao-lp.vercel.app/?utm_source=linkedin&sck=abc123';
 
-  it('maps to 3-layer Datacrazy payload', () => {
-    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:39Z' });
-    expect(out.name).toBe('João Silva');
-    expect(out.email).toBe('joao@example.com');
-    expect(out.phone).toBe('+5511999998888');
-    expect(out.source).toBe('linkedin');
-    expect(out.sourceReferral.sourceUrl).toBe(landingUrl);
-    const notes = JSON.parse(out.notes);
-    expect(notes.utm_source).toBe('linkedin');
-    expect(notes.sck).toBe('abc123');
-    expect(notes.src).toBe('review');
-    expect(notes.landing_page).toBe(landingUrl);
-    expect(notes.captured_at).toBe('2026-04-16T21:00:39Z');
+  it('maps to HubSpot Contacts v3 payload', () => {
+    const out = buildHubspotContactPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:39Z' });
+    expect(out.properties.firstname).toBe('João Silva');
+    expect(out.properties.email).toBe('joao@example.com');
+    expect(out.properties.phone).toBe('+5511999998888');
+    expect(out.properties.cpf).toBe('12345678900');
+    // HubSpot sells_online is booleancheckbox; "Sim" normalizes to "true"
+    expect(out.properties.sells_online).toBe('true');
+    expect(out.properties.utm_source).toBe('linkedin');
+    expect(out.properties.sck).toBe('abc123');
+    expect(out.properties.src).toBe('review');
+    expect(out.properties.landing_page).toBe(landingUrl);
+    // HubSpot captured_at is a date property; ISO-8601 datetime truncates to YYYY-MM-DD
+    expect(out.properties.captured_at).toBe('2026-04-16');
   });
 
-  it('falls back source to "direct" when utm_source is null', () => {
-    const out = buildDatacrazyPayload({
+  it('normalizes sells_online "Não" to HubSpot boolean "false"', () => {
+    const out = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'Não' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    expect(out.properties.sells_online).toBe('false');
+  });
+
+  it('normalizes sells_online "Yes"/"No" English labels the same way', () => {
+    const yes = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'Yes' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    const no = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'No' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    expect(yes.properties.sells_online).toBe('true');
+    expect(no.properties.sells_online).toBe('false');
+  });
+
+  it('omits utm_source from properties when it is null', () => {
+    const out = buildHubspotContactPayload({
       answers,
       utms: { ...utms, utm_source: null },
       landingUrl: 'https://ex.com/',
       capturedAt: '2026-04-16T21:00:00Z',
     });
-    expect(out.source).toBe('direct');
+    expect(out.properties.utm_source).toBeUndefined();
   });
 
-  it('does not emit a tags field (3-layer mapping only)', () => {
-    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
+  it('does not emit a tags field on any level', () => {
+    const out = buildHubspotContactPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
     expect((out as { tags?: unknown }).tags).toBeUndefined();
+    expect((out.properties as { tags?: unknown }).tags).toBeUndefined();
   });
 
-  it('does not emit sourceReferral.sourceId', () => {
-    const out = buildDatacrazyPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
-    expect((out.sourceReferral as Record<string, unknown>).sourceId).toBeUndefined();
+  it('has exactly one top-level key: properties', () => {
+    const out = buildHubspotContactPayload({ answers, utms, landingUrl, capturedAt: '2026-04-16T21:00:00Z' });
+    expect(Object.keys(out)).toEqual(['properties']);
   });
 });

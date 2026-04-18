@@ -6,7 +6,7 @@ import { createHmac } from 'node:crypto';
 // the HMAC here over the same bytes the handler receives — keeps the test
 // self-contained and avoids leaking production secrets into CI.
 const WEBHOOK_SECRET = 'dev-placeholder-secret';
-const DATACRAZY_HOST = 'api.g1.datacrazy.io';
+const HUBSPOT_HOST = 'api.hubapi.com';
 
 const UTM_QUERY =
   'utm_source=linkedin&utm_medium=organic&utm_campaign=ebulicao2026&utm_content=hero-cta&utm_term=raffle&sck=abc123&src=review';
@@ -168,17 +168,17 @@ test.describe('Lead flow — E2E', () => {
       !!process.env.PLAYWRIGHT_TEST_BASE_URL,
       'Signed-payload test requires deterministic local webServer env; skip against remote deployments.',
     );
-    // Install a Playwright route mock for Datacrazy on the browser context.
+    // Install a Playwright route mock for HubSpot on the browser context.
     // NOTE (deviation from plan): this mock only catches requests issued from
     // the browser process. The actual `/api/lead` handler runs inside the
-    // Next.js server and calls Datacrazy via Node's global fetch, which
+    // Next.js server and calls HubSpot via Node's global fetch, which
     // Playwright cannot intercept. The mock is kept installed (a) to document
-    // intent, and (b) so that any accidental browser-originated call to the
-    // CRM host would also be stopped in a deterministic way. Shape assertions
-    // on the outbound Datacrazy body are already covered in the unit suite
-    // (`tests/unit/utm-mapping.test.ts`, `tests/unit/datacrazy.test.ts`).
+    // intent, and (b) so that any accidental browser-originated call to
+    // `/crm/v3/objects/contacts` would also be stopped in a deterministic way.
+    // Shape assertions on the outbound HubSpot body are already covered in the
+    // unit suite (`tests/unit/utm-mapping.test.ts`, `tests/unit/hubspot.test.ts`).
     const crmHits: { url: string; body: unknown }[] = [];
-    await page.route(`**://${DATACRAZY_HOST}/**`, async (route) => {
+    await page.route(`**://${HUBSPOT_HOST}/**`, async (route) => {
       const req = route.request();
       let parsed: unknown = null;
       try {
@@ -205,12 +205,12 @@ test.describe('Lead flow — E2E', () => {
       data: body,
     });
 
-    // The playwright.config.ts webServer forces DATACRAZY_API_TOKEN to the
-    // deterministic literal 'e2e-test-token'. Datacrazy rejects that token,
-    // so the outbound POST returns a non-2xx, and our handler maps that to
-    // 500 { error: 'crm_failed' }. A 500 here proves the full handler
-    // pipeline ran past HMAC verification, JSON parse, parseAnswers,
-    // mapUtms, buildDatacrazyPayload, and into postLead. Because env is
+    // The playwright.config.ts webServer forces HUBSPOT_PRIVATE_APP_TOKEN to
+    // the deterministic literal 'e2e-test-token'. HubSpot rejects that token
+    // with 401, so the outbound POST returns a non-2xx, and our handler maps
+    // that to 500 { error: 'crm_failed' }. A 500 here proves the full handler
+    // pipeline ran past HMAC verification, JSON parse, parseAnswers, mapUtms,
+    // buildHubspotContactPayload, and into postLead. Because env is
     // forced-deterministic, we can assert the exact 500 status.
     expect(res.status()).toBe(500);
     const json = (await res.json()) as { error?: string };

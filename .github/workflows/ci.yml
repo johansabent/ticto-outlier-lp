@@ -39,7 +39,7 @@ jobs:
       - name: Build (required for check:secrets)
         run: pnpm build
         env:
-          DATACRAZY_API_TOKEN: ci-placeholder-token
+          HUBSPOT_PRIVATE_APP_TOKEN: ci-placeholder-token
           TYPEFORM_WEBHOOK_SECRET: ci-placeholder-typeform-secret-abcdef
           TYPEFORM_FORM_ID: FbFMsO5x
           NEXT_PUBLIC_TYPEFORM_FORM_ID: FbFMsO5x

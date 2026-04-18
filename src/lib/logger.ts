@@ -3,9 +3,9 @@ export type ErrorClass =
   | 'form_id_mismatch'
   | 'parse_error'
   | 'field_map_incomplete'
-  | 'datacrazy_4xx'
-  | 'datacrazy_5xx'
-  | 'datacrazy_timeout';
+  | 'hubspot_4xx'
+  | 'hubspot_5xx'
+  | 'hubspot_timeout';
 
 export type LeadEvent =
   | {
@@ -26,11 +26,11 @@ export type LeadEvent =
       event: 'lead.forwarded';
       request_id: string;
       submission_id: string | undefined;
-      datacrazy_status: number;
-      datacrazy_lead_id: string | number | null;
+      hubspot_status: number;
+      hubspot_contact_id: string | null;
       timing_ms: number;
       // PII-redacted hints per AGENTS.md Core Invariant: masked-only, never
-      // the full email/phone/name. Full values are already in Datacrazy;
+      // the full email/phone/name. Full values are already in HubSpot;
       // logs get shape-preserving placeholders for observability.
       email_hint: string;
       phone_hint: string;

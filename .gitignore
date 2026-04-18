@@ -75,3 +75,9 @@ visual-audit-out/
 # system / agent leftovers
 .tmp/
 /tmp/
+
+# local handover / scratch notes (not shipped)
+/HANDOVER.md
+
+# HubSpot config file
+hubspot.config.yml

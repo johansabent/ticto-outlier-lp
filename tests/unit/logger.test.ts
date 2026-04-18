@@ -76,14 +76,14 @@ describe('lib/logger', () => {
     logger.error({
       event: 'lead.failed',
       submission_id: 's1',
-      error_class: 'datacrazy_5xx',
+      error_class: 'hubspot_5xx',
       error_message: 'boom',
     });
     expect(errorSpy).toHaveBeenCalledOnce();
     expect(logSpy).not.toHaveBeenCalled();
     const parsed = JSON.parse(errorSpy.mock.calls[0][0] as string);
     expect(parsed.level).toBe('error');
-    expect(parsed.error_class).toBe('datacrazy_5xx');
+    expect(parsed.error_class).toBe('hubspot_5xx');
   });
 
   it('logger.warn writes to console.warn with level=warn', () => {

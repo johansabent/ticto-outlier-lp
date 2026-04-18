@@ -10,7 +10,7 @@ function reset() {
 }
 
 function setValidEnv() {
-  process.env.DATACRAZY_API_TOKEN = 'tok_live_123';
+  process.env.HUBSPOT_PRIVATE_APP_TOKEN = 'tok_live_123';
   process.env.TYPEFORM_WEBHOOK_SECRET = 'whsec_abcdef_long_enough';
   process.env.TYPEFORM_FORM_ID = 'FbFMsO5x';
   process.env.NEXT_PUBLIC_SITE_URL = 'https://ticto-ebulicao-lp.vercel.app';
@@ -25,16 +25,16 @@ describe('lib/env.server', () => {
     setValidEnv();
     const { getServerEnv } = await import('@/lib/env.server');
     const srv = getServerEnv();
-    expect(srv.DATACRAZY_API_TOKEN).toBe('tok_live_123');
+    expect(srv.HUBSPOT_PRIVATE_APP_TOKEN).toBe('tok_live_123');
     expect(srv.TYPEFORM_WEBHOOK_SECRET).toBe('whsec_abcdef_long_enough');
     expect(srv.TYPEFORM_FORM_ID).toBe('FbFMsO5x');
   });
 
-  it('throws when DATACRAZY_API_TOKEN is missing', async () => {
+  it('throws when HUBSPOT_PRIVATE_APP_TOKEN is missing', async () => {
     setValidEnv();
-    delete process.env.DATACRAZY_API_TOKEN;
+    delete process.env.HUBSPOT_PRIVATE_APP_TOKEN;
     const { getServerEnv } = await import('@/lib/env.server');
-    expect(() => getServerEnv()).toThrow(/DATACRAZY_API_TOKEN/);
+    expect(() => getServerEnv()).toThrow(/HUBSPOT_PRIVATE_APP_TOKEN/);
   });
 
   it('throws when TYPEFORM_WEBHOOK_SECRET is missing in production', async () => {

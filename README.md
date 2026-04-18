@@ -1,6 +1,6 @@
 # Ebulição × Ticto — Landing Page
 
-Landing page de captura de leads para o **Ebulição** (evento Outlier Experience da Ticto), com integração direta **Typeform → Datacrazy CRM** via webhook HMAC-assinado. Entregue como teste técnico da vaga de **Gerente de Automações**.
+Landing page de captura de leads para o **Ebulição** (evento Outlier Experience da Ticto), com integração direta **Typeform → HubSpot CRM** via webhook HMAC-assinado. Entregue como teste técnico da vaga de **Gerente de Automações**.
 
 - **Produção:** https://ticto-outlier-lp.vercel.app/
 - **Repositório:** https://github.com/johansabent/ticto-ebulicao-lp
@@ -14,7 +14,7 @@ Landing page de captura de leads para o **Ebulição** (evento Outlier Experienc
 https://ticto-outlier-lp.vercel.app/?utm_source=linkedin&utm_medium=organic&utm_campaign=outlier2025&utm_content=hero-cta&utm_term=evento-presencial&sck=abc123&src=review
 ```
 
-Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e repassados ao Typeform como hidden fields até chegarem ao Datacrazy.
+Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e repassados ao Typeform como hidden fields até chegarem ao HubSpot.
 
 ### Status dos entregáveis do briefing
 
@@ -23,91 +23,50 @@ Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e
 | URL publicada | https://ticto-outlier-lp.vercel.app/ |
 | Repositório público | https://github.com/johansabent/ticto-ebulicao-lp |
 | URL parametrizada | Ver exemplo acima com `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck` e `src`. |
-| Evidência CRM | A submissão real chega ao webhook, valida HMAC, mapeia os campos e tenta criar o lead no Datacrazy. A conta Free/Trial bloqueia a persistência com `code: "upgrade-plan"`; o registro abaixo documenta essa limitação da plataforma e o ponto exato em que o fluxo para. |
+| Evidência CRM | A submissão real chega ao webhook, valida HMAC, mapeia os campos e cria o contato no HubSpot via `POST /crm/v3/objects/contacts`. Retransmissões do Typeform com o mesmo email convergem na mesma row por idempotência (409-como-sucesso). A motivação da troca CRM → HubSpot está documentada abaixo. |
 | README | Este arquivo contém setup local, decisões técnicas, dificuldades e limitações. |
 
 ---
 
-## Descoberta durante o teste: o plan-gate do Datacrazy é resource-level, não route-specific
+## Integração CRM: HubSpot
 
-**TL;DR:** Os dois endpoints de criação de lead documentados — `POST /api/v1/leads` (do `docs.datacrazy.io`) e `POST /api/v1/leads/additional-fields` (exposto no OpenAPI spec `api.datacrazy.io/v1/api/openapi/v1/json` mas ausente do `docs.datacrazy.io/llms.txt`) — retornam **HTTP 400 com `code: "upgrade-plan"`** em conta Free. O gate está na camada de billing do recurso *Leads* no Datacrazy, não na rota. Swap de endpoint não desbloqueia.
+**Motivação.** A primeira iteração do pipeline apontava para outro CRM cuja conta Free bloqueava criação de leads via API: os dois endpoints documentados (`POST /api/v1/leads` e `POST /api/v1/leads/additional-fields`) retornavam **HTTP 400 com `code: "upgrade-plan"`**, com o gate localizado na camada de billing do recurso *Leads* e não na rota específica. As duas respostas lado a lado e a investigação que confirmou o diagnóstico (plan-gate resource-level, não route-specific) estão preservadas no git em [`a1b5901`](https://github.com/johansabent/ticto-ebulicao-lp/commit/a1b5901) e [`e442a5d`](https://github.com/johansabent/ticto-ebulicao-lp/commit/e442a5d) para auditoria. Em vez de entregar com a última camada do pipeline travada num paywall, troquei o destino para HubSpot, que tem plano free e aceita `POST /crm/v3/objects/contacts` com token de Private App.
 
-### Experiência executada
+**A troca foi localizada.** Um novo adapter em `src/lib/hubspot.ts` substituiu o cliente do CRM anterior, swappando o POST target para a Contacts v3 API do HubSpot. As camadas 1–6 do pipeline (HMAC, parse de answers, map de UTMs, build do payload, timeout, retry em 429) permanecem idênticas — só a última muda de destino. A interface `postLead(payload) → PostLeadResult` foi preservada exatamente por esse motivo: trocar CRM era uma alteração prevista, não improvisada.
 
-Para confirmar a hipótese, a variável `DATACRAZY_LEADS_ENDPOINT` foi adicionada em [`src/lib/env.server.ts`](src/lib/env.server.ts) como env var opcional (zod-validada, default `/api/v1/leads`) e [`src/lib/datacrazy.ts`](src/lib/datacrazy.ts#L5) passou a ler o endpoint via `getServerEnv()` em vez de constante hardcoded. No Vercel preview da branch `experiment/datacrazy-additional-fields`, a env foi setada para `https://api.g1.datacrazy.io/api/v1/leads/additional-fields`, preview foi redeployado, e uma submissão real foi disparada via webhook do Typeform (`form_id: FbFMsO5x`, HMAC `sha256` válida).
+### Env vars novas
 
-### Evidência — ambos os endpoints, mesma resposta
+| Variável | Escopo | Origem |
+|---|---|---|
+| `HUBSPOT_PRIVATE_APP_TOKEN` | **server-only** | Settings → Integrations → Private Apps. Scope mínimo: `crm.objects.contacts.write`. |
+| `HUBSPOT_API_BASE` | **server-only**, opcional | Override do host (default `https://api.hubapi.com`). |
 
-**Submissão 1 — `POST /api/v1/leads`** (endpoint default):
+### Idempotência via 409
 
-```json
-{
-  "level": "error",
-  "ts": "2026-04-16T21:00:39.000Z",
-  "event": "lead.failed",
-  "request_id": "req_dummy_prior",
-  "submission_id": "ajjpxztlarw2km0ugekfeajjpxzj9yyz",
-  "error_class": "datacrazy_4xx",
-  "error_message": "datacrazy 400: {\"message\":\"Upgrade Plan\",\"code\":\"upgrade-plan\",\"params\":{\"currentPlan\":\"Free\",\"requiredPlan\":\"Enterprise\"}}"
-}
-```
-
-**Submissão 2 — `POST /api/v1/leads/additional-fields`** (experimento, 2026-04-18):
-
-```json
-{"level":"info","ts":"2026-04-18T01:57:31.517Z","event":"lead.received","request_id":"req_mo3ot2b5_hlvjyj","auth_mode":"hmac","auth_valid":true,"timing_ms":12}
-{"level":"info","ts":"2026-04-18T01:57:31.521Z","event":"lead.mapped","request_id":"req_mo3ot2b5_hlvjyj","submission_id":"01KPF4XCAZHC43BC723MYJKM9B","field_count_mapped":5,"utm_keys_present":["utm_source","utm_medium","utm_campaign","utm_content","utm_term","sck","src"]}
-{"level":"error","ts":"2026-04-18T01:57:32.004Z","event":"lead.failed","request_id":"req_mo3ot2b5_hlvjyj","submission_id":"01KPF4XCAZHC43BC723MYJKM9B","error_class":"datacrazy_4xx","error_message":"datacrazy 400: {\"message\":\"Upgrade Plan\",\"code\":\"upgrade-plan\",\"params\":{\"currentPlan\":\"Free\",\"requiredPlan\":\"Enterprise\"}}"}
-```
-
-Mesmo `code: "upgrade-plan"`, mesmo `currentPlan: "Free"`, mesmo `requiredPlan: "Enterprise"`. Diferença: a rota chamada. Conclusão: **o plan-gate não discrimina entre `/leads` e `/leads/additional-fields`** — é decisão de billing da plataforma sobre o recurso inteiro.
-
-### O que o log prova
-
-Cada linha da submissão 2 é uma camada do pipeline que funcionou antes de o plan-gate bater:
-
-| Camada | Evidência no log |
-| --- | --- |
-| HMAC Typeform válido | `lead.received` com `auth_valid: true` |
-| `form_id` bateu com `TYPEFORM_FORM_ID` | Ausência de `form_id_mismatch` no log |
-| `parseAnswers` extraiu os 5 campos | `field_count_mapped: 5` |
-| `mapUtms` populou todas as 7 chaves UTM | `utm_keys_present` com todas as 7 |
-| `buildDatacrazyPayload` rodou | Sem o payload, o POST não teria sido feito |
-| Datacrazy autenticou o Bearer token | Se inválido, seria `401`, não `400` com `upgrade-plan` |
-| Datacrazy validou a forma do payload | Se inválido, seria `400` com erro de campo, não plan-gate |
-
-O 400 é da camada de billing do Datacrazy, após autenticação e validação. É a última barreira possível em ambos os endpoints.
-
-### Como desbloquear (caminhos possíveis)
-
-1. **Conta Enterprise ou trial estendida** — swap do `DATACRAZY_API_TOKEN` na env var do Vercel; nenhum código muda. A próxima submissão completa o fluxo com HTTP 200/201.
-2. **Endpoint alternativo não-gated do Datacrazy** — se a equipe do Datacrazy tiver um endpoint legacy ou webhook receiver sem plan-gate (por exemplo, uma rota de captura usada pela integração nativa com Google Forms), a troca é apenas uma env var no Vercel: `vercel env add DATACRAZY_LEADS_ENDPOINT preview experiment/datacrazy-additional-fields --value <nova-url> --yes`. Zero redeploy de código. A experiência acima descarta as duas rotas publicamente documentadas, mas não descarta rotas não-públicas.
-3. **CRM alternativo** — substituir Datacrazy por outro destino (HubSpot, Pipedrive, CRM proprietário da Ticto) é um commit pequeno: substituir o client em [`src/lib/datacrazy.ts`](src/lib/datacrazy.ts) mantendo a interface `postLead(payload) → PostLeadResult`. Tudo acima continua inalterado.
+HubSpot retorna `409 Contact already exists` quando o email já está no CRM. O adapter mapeia isso para `{ ok: true, status: 409, leadId: null, duplicate: true }`, e a rota loga `lead.forwarded` com `hubspot_status: 409`. Consequência: retransmissões do Typeform (seja por nosso retry de 429, seja pelo retry do próprio Typeform em 5xx) com o mesmo email **não quebram o fluxo** — convergem na row existente do contato. Obter o `id` do contato existente exigiria um segundo `GET /contacts/{email}?idProperty=email`; fora do escopo de 72h, `leadId: null` é suficiente para observabilidade.
 
 ### Por que isso *fortalece* a entrega
 
-- O pipeline crítico atravessa 7 camadas antes de parar no plan-gate. Cada camada foi testada isoladamente (unit) e em conjunto (E2E).
-- A observabilidade fez o diagnóstico ser imediato: `error_class: "datacrazy_4xx"` + o JSON literal do Datacrazy no `error_message` tornam o plan-gate óbvio em logs, sem debug adicional.
-- O classificador `PostLeadFailure` já diferencia `datacrazy_4xx` / `datacrazy_5xx` / `datacrazy_timeout` — um retry em plan-gate seria inútil (permanente), então o handler não retenta, não enfileira, não derruba a taxa de submissão do Typeform. Fail-closed com visibilidade.
-- O evento `lead.received` continuou sendo emitido em **todas** as submissões durante o teste, garantindo auditoria completa no Vercel mesmo quando o CRM recusa.
-- A experiência acima transformou uma hipótese ("talvez o segundo endpoint seja a saída") em evidência cruzada ("ambos retornam o mesmo código de plan-gate, portanto é billing da plataforma"). A mudança em código ficou no repo como uma env var defaultada ao comportamento antigo — zero risco de regressão, flip-switch em ~30 segundos via Vercel dashboard se um token Enterprise aparecer.
-
-Em produção real da Ticto, esta seção viraria um aviso para ops: "se o Vercel estiver emitindo `datacrazy_4xx` com `upgrade-plan`, o problema é no pricing do CRM, não no código."
+- O pipeline crítico atravessa 7 camadas antes de chegar no HubSpot. Cada camada é testada isoladamente (unit) e em conjunto (E2E).
+- A observabilidade funcionou desde o começo: a combinação de `error_class` máquina-legível com `error_message` contendo o JSON literal da resposta foi o que tornou o plan-gate do CRM anterior óbvio em logs quando ele apareceu, sem debug adicional. Pós-swap, o mesmo classificador emite `hubspot_4xx` / `hubspot_5xx` / `hubspot_timeout` — a troca de destino não degradou observabilidade.
+- O classificador `PostLeadFailure` distingue as três classes, então retries em condição permanente (4xx estrutural) não acontecem; só 429 e timeout tentam de novo. Fail-closed com visibilidade.
+- O evento `lead.received` continua sendo emitido em **todas** as submissões, garantindo auditoria completa no Vercel mesmo quando o CRM recusa.
+- A troca de CRM foi uma mudança localizada: um arquivo (`src/lib/hubspot.ts`), um novo schema (`HubspotContactPayload`) e três log events renomeados. A invariante "interface `postLead` estável, destino trocável" deixou de ser promessa na arquitetura e virou exercício em produção.
 
 ---
 
 ## Por que integração direta (e não Zapier / Make / n8n)
 
-A Ticto pode orquestrar Typeform → Datacrazy via Zapier, Make ou n8n — são ferramentas legítimas e úteis em diversos contextos. Para este teste escolhi deliberadamente o caminho oposto: um route handler do Next.js recebe o webhook, valida HMAC, transforma o payload e chama a REST API do Datacrazy.
+A Ticto pode orquestrar Typeform → HubSpot via Zapier, Make ou n8n — são ferramentas legítimas e úteis em diversos contextos. Para este teste escolhi deliberadamente o caminho oposto: um route handler do Next.js recebe o webhook, valida HMAC, transforma o payload e chama a REST API do HubSpot.
 
 A razão é pragmatismo de engenharia, não ideologia:
 
 - **Contrato tipado ponta a ponta.** O payload do Typeform é validado com Zod/TypeScript no momento em que entra. Um erro de campo quebra no `pnpm build`, não em uma execução do Zap duas semanas depois.
 - **Validação inline, no ponto da transformação.** Mascaramento de PII, normalização de UTMs, idempotência por `form_response.token` — tudo fica no mesmo módulo que faz a transformação. Em middleware SaaS isso vira múltiplos "Formatter" / "Code" steps, difíceis de testar em isolamento.
-- **Zero vendor lock-in no caminho crítico.** A rota `/api/lead` não depende de nenhuma plataforma além de Next.js e `fetch`. Trocar Datacrazy por outro CRM é uma alteração localizada.
+- **Zero vendor lock-in no caminho crítico.** A rota `/api/lead` não depende de nenhuma plataforma além de Next.js e `fetch`. A migração de CRM documentada acima é a prova viva: uma alteração localizada na última camada do pipeline, sem redesenhar nada.
 - **Custo por execução igual a zero.** Vercel Fluid Compute (Hobby) absorve o volume esperado sem faturar por execução ou por "task" de integração.
 - **Falhas visíveis em Vercel Logs.** Cada tentativa deixa um evento estruturado (`lead.received`, `lead.mapped`, `lead.forwarded`, `lead.failed`) com `error_class` máquina-legível. Não precisa abrir um dashboard de terceiros para saber por que um lead não entrou.
-- **Testável em isolamento.** 59 testes unitários (Vitest) cobrem assinatura HMAC, janela de replay, extração de campos por `ref`, mapeamento 3-layer e redação de PII — tudo sem rodar a plataforma externa. Orquestradores visuais não oferecem unit testing equivalente.
+- **Testável em isolamento.** 62 testes unitários (Vitest) cobrem assinatura HMAC, janela de replay, extração de campos por `ref`, build do `HubspotContactPayload`, 409-como-sucesso e redação de PII — tudo sem rodar a plataforma externa. Orquestradores visuais não oferecem unit testing equivalente.
 
 Para volume e complexidade maiores, orquestradores visuais têm lugar (múltiplas fontes, fan-out, humanos no meio). Para este escopo — 1 formulário → 1 CRM com auditoria de UTMs — código direto ganha em todas as dimensões que importam para um Gerente de Automações.
 
@@ -136,15 +95,20 @@ app/api/lead/route.ts (Vercel Fluid Compute, runtime Node 24)
   3. verifyTypeformSignature()  ─►  HMAC em bytes crus ANTES de JSON.parse
                                     + janela de replay 60s futuro / 48h passado
   4. JSON.parse → parseAnswers(by ref)
-  5. mapUtms() + buildDatacrazyPayload()  (3-layer: source / sourceReferral.sourceUrl / notes-JSON)
-  6. postLead() → POST https://api.g1.datacrazy.io/api/v1/leads
-                  (fetch com timeout, retry em 429, result tipado)
+  5. mapUtms() + buildHubspotContactPayload()  (envelope com properties achatadas)
+  6. postLead() → POST https://api.hubapi.com/crm/v3/objects/contacts
+                  (fetch com timeout, retry em 429, 409-como-sucesso, result tipado)
   7. Log estruturado com PII redigida (email/phone/nome)
   ▼
-Datacrazy API recebe payload com:
-  • source                        ← utm_source
-  • sourceReferral.sourceUrl      ← landing_page completa com querystring
-  • notes                         ← JSON com os 7 params + capturedAt + landing_page
+HubSpot Contacts v3 API recebe payload com:
+  • properties.email              ← answers.email
+  • properties.firstname          ← answers.nome
+  • properties.phone              ← answers.telefone
+  • properties.cpf                ← answers.cpf (custom property)
+  • properties.sells_online       ← answers.sells_online (custom property)
+  • properties.utm_*              ← utm_source, utm_medium, utm_campaign, utm_content, utm_term, sck, src
+  • properties.landing_page       ← landing_page validada via sanitizeLandingUrl
+  • properties.captured_at        ← submitted_at do Typeform (ISO-8601)
 ```
 
 ### Fluxo de atribuição (first-touch)
@@ -170,7 +134,7 @@ Trade-off consciente: a URL copiada após a reescrita contém os params originai
 | Animações | `tw-animate-css` | `tailwindcss-animate` deprecated em 2025. |
 | Validação env | **Zod ^4** | Schema Zod fail-fast em `lib/env.server.ts` e `lib/env.client.ts`. |
 | Form embed | **Typeform embed script** | Popup aprovado pelo snippet `data-tf-live`; hidden fields via `data-tf-hidden`. |
-| Unit tests | **Vitest ^2.1** | 59 testes, 7 arquivos. |
+| Unit tests | **Vitest ^2.1** | 62 testes, 7 arquivos. |
 | E2E | **Playwright ^1.59** | Trigger `deployment_status` no CI contra Preview. |
 | Package manager | **pnpm 10.33** | `engines.node >=24 <25`. |
 | Deploy | **Vercel + GitHub integration** | Push em `main` = prod; PRs = Preview. |
@@ -199,7 +163,8 @@ pnpm dev                     # http://localhost:3000
 
 | Variável | Escopo | Origem |
 |---|---|---|
-| `DATACRAZY_API_TOKEN` | **server-only** | Datacrazy → Configurações → API (token exibido 1× ao criar). |
+| `HUBSPOT_PRIVATE_APP_TOKEN` | **server-only** | Settings → Integrations → Private Apps (scope: `crm.objects.contacts.write`). |
+| `HUBSPOT_API_BASE` | **server-only**, opcional | Override do host (default `https://api.hubapi.com`). |
 | `TYPEFORM_WEBHOOK_SECRET` | **server-only**, min. 16 chars em produção | Typeform → Connect → Webhooks → Edit → Secret. |
 | `TYPEFORM_FORM_ID` | **server-only** | ID do formulário (atual: `FbFMsO5x`). Validado na inicialização via zod em `env.server.ts` e cruzado contra `form_response.form_id` no webhook. |
 | `NEXT_PUBLIC_SITE_URL` | público (OG/canonical) | URL base do deploy. Ex.: `https://ticto-outlier-lp.vercel.app`. |
@@ -221,37 +186,37 @@ Vars `NEXT_PUBLIC_*` adicionais estão proibidas pela allowlist em `AGENTS.md`.
 | `pnpm test` | Vitest (run único, para CI). |
 | `pnpm test:watch` | Vitest em watch. |
 | `pnpm e2e` | Playwright (`--pass-with-no-tests` até a suite E2E ser reintroduzida). |
-| `pnpm check:secrets` | Falha o build se `DATACRAZY_API_TOKEN` ou `TYPEFORM_WEBHOOK_SECRET` vazarem no bundle cliente. |
+| `pnpm check:secrets` | Falha o build se `HUBSPOT_PRIVATE_APP_TOKEN` ou `TYPEFORM_WEBHOOK_SECRET` vazarem no bundle cliente. |
 
 ---
 
 ## Testes
 
-### Unit tests (59 testes, 7 arquivos)
+### Unit tests (62 testes, 7 arquivos)
 
 | Arquivo | Cobertura |
 |---|---|
 | `tests/unit/webhook-auth.test.ts` | HMAC SHA-256 base64, `timingSafeEqual`, janela de replay 60s futuro / 48h passado, erros estruturais (`malformed_payload`). |
-| `tests/unit/utm-mapping.test.ts` | Extração de UTMs de `form_response.hidden`; mapeamento 3-layer → Datacrazy. |
+| `tests/unit/utm-mapping.test.ts` | Extração de UTMs de `form_response.hidden`; build do `HubspotContactPayload` com properties achatadas e envelope `{ properties: {...} }`. |
 | `tests/unit/typeform-fields.test.ts` | `parseAnswers` por `ref` (não por ID); falha em campos obrigatórios ausentes. |
-| `tests/unit/datacrazy.test.ts` | Fetch client, retry em 429, timeout, union tipado `ok`/`err`. |
+| `tests/unit/hubspot.test.ts` | Fetch client HubSpot Contacts v3, Bearer Private App token, retry em 429, timeout, 409-como-sucesso idempotente, union tipado `ok`/`err`. |
 | `tests/unit/attribution.test.ts` | First-touch save, rehydrate, guard SSR. |
 | `tests/unit/env.test.ts` | Schema Zod rejeita env inválido; regras de `min(16)` só em produção. |
 | `tests/unit/logger.test.ts` | `redactEmail` (`j***@domain.com`), `redactPhone` (`***-1234`), `redactName` (`J***`). |
 
 ### E2E (Playwright)
 
-Rodado em GitHub Actions via evento `deployment_status` contra o Preview URL da Vercel. Datacrazy fica mockado no CI (`page.route('**/api.g1.datacrazy.io/**')`) para evitar flakiness e rate limits. Um smoke manual contra o CRM real é gravado 1× como entregável do teste (screencast).
+Rodado em GitHub Actions via evento `deployment_status` contra o Preview URL da Vercel. HubSpot fica mockado no CI (`page.route('**/api.hubapi.com/**')`) para evitar flakiness e rate limits. Um smoke manual contra o CRM real é gravado 1× como entregável do teste (screencast).
 
 ### `check:secrets`
 
-Script `scripts/check-secrets.mjs` varre `.next/static`, `.next/server/app/*.html|.rsc` e `out/` atrás das strings `DATACRAZY_API_TOKEN` e `TYPEFORM_WEBHOOK_SECRET`. Roda no CI (`.github/workflows/ci.yml`) e falha o build se encontrar.
+Script `scripts/check-secrets.mjs` varre `.next/static`, `.next/server/app/*.html|.rsc` e `out/` atrás das strings `HUBSPOT_PRIVATE_APP_TOKEN` e `TYPEFORM_WEBHOOK_SECRET`. Roda no CI (`.github/workflows/ci.yml`) e falha o build se encontrar.
 
 ### Auditoria de cobertura (Task 23)
 
 > **Test coverage audit (Task 23):** 0 P0, 5 P1, 6 P2 findings.
 > - **P0 gaps:** none — no ship-blockers
-> - **P1 — tracked for post-ship:** datacrazy generic-fetch-throw, two-consecutive-429 path, `lead_id`/`leadId` fallbacks, `Retry-After` edge cases, extract `sanitizeLandingUrl` + `readBodyWithCap` from route.ts into `lib/request-utils.ts` for direct unit coverage
+> - **P1 — tracked for post-ship:** hubspot generic-fetch-throw, two-consecutive-429 path, `contact-id` extraction fallbacks, `Retry-After` edge cases, extract `sanitizeLandingUrl` + `readBodyWithCap` from route.ts into `lib/request-utils.ts` for direct unit coverage
 > - **P2 — polish:** 48h past-boundary edge, multibyte UTF-8 HMAC test, empty-string UTM handling, `storageAvailable()=false` branches
 > - **Strengths:** discriminated-union `ValidationResult` with narrowing helper, HMAC-first ordering tested, asymmetric window boundary tests, explanatory test comments
 
@@ -278,9 +243,11 @@ Script `scripts/check-secrets.mjs` varre `.next/static`, `.next/server/app/*.htm
 
 Em respeito ao tempo de 72h e ao escopo do teste, aceitei as seguintes limitações conscientemente. Todas estão trackadas e seriam tratadas em produção:
 
-- **Datacrazy Free tier bloqueia a criação de leads via API.** Ambos os endpoints de criação documentados (`POST /api/v1/leads` e `POST /api/v1/leads/additional-fields`) retornam `code: "upgrade-plan"` — o gate é resource-level no billing da plataforma, não específico de rota. O pipeline completo funciona até a última camada; ver seção [Descoberta durante o teste](#descoberta-durante-o-teste-o-plan-gate-do-datacrazy-é-resource-level-não-route-specific) para os dois logs lado a lado. Desbloqueio = swap do `DATACRAZY_API_TOKEN` no Vercel para uma conta Enterprise; zero mudança de código.
+- **Sem dedup durável por `form_response.token`.** Retransmissões do Typeform (seja por nosso retry em 429, seja pelo retry do Typeform em 5xx) convergem em idempotência natural pelo 409-como-sucesso do HubSpot: mesmo email ⇒ mesma row. O que **não** está coberto: se um mesmo token do Typeform retransmitisse com email diferente (cenário patológico/raro), o HubSpot criaria duas rows distintas. Solução de produção: LRU de `form_response.token` em Redis (Vercel Marketplace / Upstash). Fora do escopo de 72h.
 
-- **Sem dedup durável de webhooks.** Se Typeform retransmitir ou nosso retry em 429 re-entrar no fluxo, Datacrazy pode aceitar duplicata. Mitigação atual: o Datacrazy identifica leads por `nome + email` ou `nome + telefone`, então submissões duplicadas convergem no CRM. Solução de produção: LRU de `form_response.token` em Redis (Vercel Marketplace / Upstash).
+- **`leadId: null` em 409-como-sucesso.** O adapter trata 409 como sucesso idempotente mas não devolve o `id` do contato existente (faria exigir um segundo `GET /contacts/{email}?idProperty=email`). A observabilidade do caminho feliz (`lead.forwarded` com `hubspot_status: 409`) é suficiente para o teste; em produção real esse segundo GET seria adicionado para fechar o loop de auditoria.
+- **`captured_at` armazenado como `date` (YYYY-MM-DD).** A property `captured_at` no HubSpot foi criada como tipo `date` (midnight UTC) em vez de `datetime`. O `submitted_at` do Typeform chega como ISO-8601 completo e é truncado para a componente de data antes do POST (`fieldType` é imutável no HubSpot, então mudar para `datetime` exigiria rename/migrate). O timestamp exato de submissão permanece acessível via `createdate` automático do HubSpot e via `lead.forwarded` nos logs estruturados.
+- **`sells_online` mapeado via label → boolean.** A property `sells_online` é `booleancheckbox` no HubSpot (valores `"true"`/`"false"`). O payload do Typeform envia o label da escolha (`"Sim"`/`"Não"` em pt-BR, `"Yes"`/`"No"` em inglês). O adapter normaliza via `trim().toLowerCase()` contra um conjunto conhecido; labels fora do conjunto caem em `"false"` em vez de derrubar a submissão com 400. Trade-off explícito em favor de robustez de ingestão.
 - **CSP não configurada.** `proxy.ts` aplica apenas `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` e HSTS. CSP rigorosa sem quebrar o embed Typeform exige iteração fora do escopo.
 - **Contraste WCAG em `btn-primary`.** Combinação documentada para revisão visual; não bloqueia entrega.
 - **Indireção `--font-*` em CSS vars.** Próximo passo é expor as fontes via `@theme` em vez de redeclarar.
@@ -300,7 +267,7 @@ src/
 │   ├── page.tsx                 LP RSC; compõe Hero, Rules, Footer, TypeformEmbed.
 │   ├── globals.css              Tailwind @import + @theme + tokens OKLCH.
 │   ├── fonts/                   OTF/TTF locais servidas via `next/font/local`.
-│   └── api/lead/route.ts        Handler do webhook Typeform (HMAC + Datacrazy POST).
+│   └── api/lead/route.ts        Handler do webhook Typeform (HMAC + HubSpot POST).
 ├── components/
 │   ├── Hero.tsx                 Hero RSC com CTA.
 │   ├── Rules.tsx                Bloco de regras do evento.
@@ -309,18 +276,18 @@ src/
 │   ├── utm-rehydrator.tsx       Client: first-touch save + history.replaceState.
 │   └── ui/button.tsx            shadcn primitive.
 ├── lib/
-│   ├── env.server.ts            Zod schema server-only (DATACRAZY, TYPEFORM_*).
+│   ├── env.server.ts            Zod schema server-only (HUBSPOT_*, TYPEFORM_*).
 │   ├── env.client.ts            Zod schema público (NEXT_PUBLIC_*).
 │   ├── webhook-auth.ts          HMAC SHA-256 base64, timingSafeEqual, replay window.
 │   ├── typeform-fields.ts       Registry `ref`-keyed; parseAnswers tipado.
-│   ├── utm-mapping.ts           mapUtms + buildDatacrazyPayload (3-layer).
-│   ├── datacrazy.ts             Fetch client com retry em 429 + timeout + result tipado.
+│   ├── utm-mapping.ts           mapUtms + buildHubspotContactPayload (flat properties envelope).
+│   ├── hubspot.ts               Fetch client HubSpot Contacts v3: retry em 429 + timeout + 409-como-sucesso + result tipado.
 │   ├── attribution.ts           localStorage first-touch helpers.
 │   ├── logger.ts                JSON structured log + redactEmail/Name/Phone.
 │   └── utils.ts                 cn() (tailwind-merge + clsx).
 └── proxy.ts                     Security headers only (sem auth, sem rate limit).
 
-tests/unit/                      7 arquivos, 59 testes (Vitest).
+tests/unit/                      7 arquivos, 62 testes (Vitest).
 scripts/check-secrets.mjs        Guard: server-only env vars ∉ client bundle.
 docs/                            Briefing original do teste técnico.
 .github/workflows/ci.yml         typecheck + lint + test + check:secrets.
