@@ -4,16 +4,16 @@ Boas vindas à tríade de engenharia desta aplicação! Este documento tem o obj
 
 ---
 
-## 🔁 1. Fluxo de Revisão e Pull Requests (O Ciclo `@[/review-pr]`)
+## 🔁 1. Fluxo de Revisão e Pull Requests (O Ciclo `/review-pr`)
 
 Desenvolver num ambiente rápido necessita de processos sólidos. Qualquer alteração neste repositório passa por um fluxo estrito de avaliação:
 
 1. **Nunca Envie Direto para a `main`:** Temos "Branch Protection" ativo no GitHub. Tudo deve seguir obrigatoriamente através da abertura de Pull Requests (sejam Features ou Bugfixes).
-2. **Template Limpo Obrigatório:** O autor deve preencher nosso `.github/PULL_REQUEST_TEMPLATE.md` atestando e provando a estabilidade da interface gráfica (o famoso pixel-perfect) e o envio firme de todos os repasses UTM.
-3. **Revisão Auxiliada por IA (`@[/review-pr]`):** Dispomos de um Workflow interno e autônomo (presente em `.agent/workflows/review-pr.md`). Sempre que ativado, este workflow tem a responsabilidade primária de assumir o volante e:
+2. **Template Limpo Obrigatório:** O autor deve preencher nosso `.github/PULL_REQUEST_TEMPLATE.md` atestando e provando que todos os checks obrigatórios (typecheck, lint, test, check:secrets, E2E e envio do screencast) passaram com sucesso.
+3. **Revisão Auxiliada por IA (`/review-pr`):** Dispomos de um Workflow interno e autônomo (presente em `.agent/workflows/review-pr.md`). Sempre que ativado via Claude Code, este workflow tem a responsabilidade primária de assumir o volante e:
    - Analisar "Diffs" procurando vulnerabilidades esquecidas pelo autor.
-   - Sumarizar o código classificando falhas em baldes lógicos: `BLOCKING`, `SUGGESTION`, e `NITS`.
-   - Oferecer Resolução Local Automatizada: A IA possui autonomia para fixar os itens levantados na própria máquina em frações de segundos, e empurrar as correções direto de volta pro GitHub já confirmadas se validadas manualmente.
+   - Sumarizar o código classificando falhas em baldes lógicos: `BLOCKING`, `SUGGESTION`, `NIT`, e `QUESTION`.
+   - Oferecer Resolução Local Automatizada: A IA possui autonomia para **propor** correções localmente. No entanto, existe uma regra fixa (hard rule): ela **nunca** fará envios pro GitHub (push), não posta respostas e nem resolve conversas sem o **pedido ou aprovação humana explícita**.
 
 ---
 
