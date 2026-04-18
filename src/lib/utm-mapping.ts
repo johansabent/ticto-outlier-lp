@@ -58,14 +58,27 @@ export function buildHubspotContactPayload(ctx: {
   };
 
   if (answers.cpf) properties.cpf = answers.cpf;
-  if (answers.sells_online) properties.sells_online = answers.sells_online;
+  if (answers.sells_online) {
+    // HubSpot `sells_online` is a booleancheckbox property whose options are
+    // {label:"Yes",value:"true"} / {label:"No",value:"false"}. The Typeform
+    // side sends the choice label (PT-BR "Sim"/"Não" or EN "Yes"/"No"), so
+    // we normalize to the boolean value string HubSpot's schema expects.
+    // Unknown labels default to "false" rather than 400-ing the POST.
+    const normalized = answers.sells_online.trim().toLowerCase();
+    properties.sells_online =
+      normalized === 'sim' || normalized === 'yes' ? 'true' : 'false';
+  }
 
   for (const [k, v] of Object.entries(utms)) {
     if (v !== null) (properties as Record<string, string>)[k] = v;
   }
 
   properties.landing_page = landingUrl;
-  properties.captured_at = capturedAt;
+  // HubSpot `captured_at` is a `date` property (YYYY-MM-DD, UTC midnight).
+  // Typeform's `submitted_at` is full ISO-8601 datetime; truncate to the
+  // date component. Submission wall-clock time is still retained by HubSpot's
+  // automatic `createdate` on the contact record.
+  properties.captured_at = capturedAt.slice(0, 10);
 
   return { properties };
 }

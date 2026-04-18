@@ -51,12 +51,41 @@ describe('lib/utm-mapping — buildHubspotContactPayload', () => {
     expect(out.properties.email).toBe('joao@example.com');
     expect(out.properties.phone).toBe('+5511999998888');
     expect(out.properties.cpf).toBe('12345678900');
-    expect(out.properties.sells_online).toBe('Sim');
+    // HubSpot sells_online is booleancheckbox; "Sim" normalizes to "true"
+    expect(out.properties.sells_online).toBe('true');
     expect(out.properties.utm_source).toBe('linkedin');
     expect(out.properties.sck).toBe('abc123');
     expect(out.properties.src).toBe('review');
     expect(out.properties.landing_page).toBe(landingUrl);
-    expect(out.properties.captured_at).toBe('2026-04-16T21:00:39Z');
+    // HubSpot captured_at is a date property; ISO-8601 datetime truncates to YYYY-MM-DD
+    expect(out.properties.captured_at).toBe('2026-04-16');
+  });
+
+  it('normalizes sells_online "Não" to HubSpot boolean "false"', () => {
+    const out = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'Não' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    expect(out.properties.sells_online).toBe('false');
+  });
+
+  it('normalizes sells_online "Yes"/"No" English labels the same way', () => {
+    const yes = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'Yes' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    const no = buildHubspotContactPayload({
+      answers: { ...answers, sells_online: 'No' },
+      utms,
+      landingUrl,
+      capturedAt: '2026-04-16T21:00:00Z',
+    });
+    expect(yes.properties.sells_online).toBe('true');
+    expect(no.properties.sells_online).toBe('false');
   });
 
   it('omits utm_source from properties when it is null', () => {
