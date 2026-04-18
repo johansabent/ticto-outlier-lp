@@ -76,7 +76,7 @@ export function TypeformEmbed({ formId }: { formId: string }) {
           data-tf-hidden={hidden}
           className="h-[56px] w-full rounded-[6px] bg-brand-cyan px-5 font-tomato text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-brand-cyan-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-bg-white"
         >
-          Cadastro 100% gratuito
+          QUERO GARANTIR MINHA VAGA
         </button>
       ) : (
         <div className="h-[56px] w-full animate-pulse rounded-[6px] bg-brand-cyan-light" />
