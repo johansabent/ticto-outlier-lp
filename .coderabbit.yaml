@@ -35,12 +35,17 @@ reviews:
     - path: "src/app/api/**/route.ts"
       instructions: |
         Route handlers must keep all auth, HMAC validation, and body parsing server-side.
-        Typeform webhooks: verify HMAC-SHA256 base64 with timingSafeEqual and replay window (60s future / 48h past).
-        Outbound Datacrazy calls must stay direct API — reject any Zapier/Make/n8n middleware reintroduction.
+        Typeform webhooks:
+        - Verify HMAC-SHA256 base64 on the RAW request bytes BEFORE JSON parsing (not after).
+        - Compare digests with timingSafeEqual and enforce the replay window (60s future / 48h past).
+        - Validate parsed payload `form_id` against the `TYPEFORM_FORM_ID` env var — reject mismatches even if the signature is valid.
+        - Cap request body at 64 KB; reject oversized payloads before parsing.
+        Log events must redact PII — emails as `j***@domain.com`, phone as `***-1234`, names as first-char plus stars. Never log raw field values from `parseAnswers`; use `redactEmail` / `redactPhone` / `redactName` from `@/lib/logger` on every submission-scoped log line.
+        Outbound HubSpot calls must stay direct API — reject any Zapier/Make/n8n middleware reintroduction.
     - path: "src/proxy.ts"
       instructions: |
         proxy.ts is for security headers ONLY. Reject any request auth, body validation, or business logic moved here.
-    - path: "src/lib/env/**/*.ts"
+    - path: "src/lib/env.{server,client}.ts"
       instructions: |
         Public env var allowlist is strict: only NEXT_PUBLIC_SITE_URL and NEXT_PUBLIC_TYPEFORM_FORM_ID.
         Any new NEXT_PUBLIC_* needs explicit allowlist update in the same PR.
