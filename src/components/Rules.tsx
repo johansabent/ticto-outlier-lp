@@ -21,12 +21,12 @@ export default function Rules() {
       </h2>
 
       <ol className="flex flex-col gap-[14px]">
-        {steps.map((step, i) => (
-          <li key={i} className="flex items-center gap-[14px] w-full text-[16px]">
+        {steps.map((step) => (
+          <li key={step.num} className="flex items-center gap-[14px] w-full text-[16px]">
             <span className="text-brand-cyan font-bold font-space leading-[1.6] flex-shrink-0">
               {step.num}
             </span>
-            <span className="w-[4px] h-[4px] bg-[#5bbed9] flex-shrink-0" aria-hidden="true" />
+            <span className="w-[4px] h-[4px] bg-brand-cyan flex-shrink-0" aria-hidden="true" />
             <p className="flex-1 text-white font-space font-normal leading-[1.2] whitespace-pre-wrap">
               {step.text}
             </p>

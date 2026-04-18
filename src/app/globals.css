@@ -9,6 +9,7 @@
     --color-placeholder: #6d6d6d;
     --color-dark-700: #0d0b1a;
     --color-accent-orange: #ff9c2b;
+    --color-accent-teal: #0e7490;
     --color-text-muted: #d9d9d9;
 
     --font-tomato: "Tomato Grotesk", sans-serif;
@@ -107,6 +108,10 @@
             transparent
         );
         animation: shimmer 2.5s ease-in-out infinite 0.8s;
+    }
+
+    .gradient-cta-border {
+        background: linear-gradient(90deg, #FF9C2B, #FF2689, #9747FF);
     }
 
     .promo-frame-gradient {
