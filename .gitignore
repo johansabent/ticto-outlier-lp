@@ -81,3 +81,6 @@ visual-audit-out/
 
 # HubSpot config file
 hubspot.config.yml
+
+# delivery evidence artifacts (screenshots + JSON dumps, not shipped)
+/delivery-evidence.*
