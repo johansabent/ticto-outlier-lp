@@ -53,8 +53,8 @@ O HubSpot identifica automaticamente se um contato já existe usando o e-mail ca
 Construir o webhook recebendo tudo via "Next.js" ao invés de pular rapidamente usar ferramentas "low-code" como Zapier ou Make trouxe vantagens fundamentais:
 
 - **Detecção Visual de Erros:** Usando ferramentas como TypeScript para gerir a automação, se houver qualquer desvio de campos configurados (nome de parâmetro errado), o programa grita um erro para eu corrigir ainda aqui no meu editor, não dias depois do portal no ar de cara com o cliente.
-- **Transação Isolada e "De Graça":** Em vez de pagar pro Zapier a cada tarefa "processada" caso o projeto crescesse, a hospedagem de código executa gratuitamente no servidor (limites absurdamente grandes via Fluids Compute).
-- **Segurança Premium:** Usei Autenticação segura via HMAC. Resumindo: a nossa inteligência no código checa assinaturas matemáticas que garantem que **só** o formulário Typeform oficial pode "inserir contato". Curiosos de internet tentando poluir seus Leads serão barrados!
+- **Transação Isolada e "De Graça":** Em vez de pagar pro Zapier a cada tarefa "processada" caso o projeto crescesse, a hospedagem de código executa gratuitamente no servidor (limites absurdamente grandes via Fluid Compute).
+- **Segurança Premium:** Usei Autenticação segura via HMAC. Resumindo: a nossa inteligência no código checa assinaturas matemáticas que garantem que **só** requisições assinadas com o segredo compartilhado do Typeform são aceitas. Curiosos de internet tentando poluir seus Leads serão barrados!
 - **100% Testável:** Construí mais de 60 verificações por testes contínuos automatizados. Modificarmos o campo não exige voltar e ficar clicando de página em página. Tudo é validado com código autônomo.
 
 ---
@@ -76,13 +76,13 @@ graph TD
 
 ---
 
-## Resumo das Reforços de Segurança Adicionados
+## Resumo dos Reforços de Segurança Adicionados
 
 | Adição / Regra | O que isso faz? |
 | :--- | :--- |
 | **Protocolo HMAC Rápido** | Impede mensagens de intrusos e rejeita requisições malformadas na fila de entrada. |
-| **Limite de Tamanho de Leitura (64KB)** | Corta o carregamento de "arquivos muito grandes" no formulário instantaneamente, evitando ataques DDoS ou travamento do seu servidor. |
-| **Validade Expansível de Recibo (Replay Window)** | O webhook reconhecerá ações pendentes de poucas horas com sucesso em casos de reconexão de rede, mas bloqueia ataques repetitivos ou de meses passados ("Replays"). |
+| **Limite de Tamanho de Leitura (64KB)** | Corta o carregamento de payloads excessivos instantaneamente, prevenindo exaustão de memória por requisições maliciosas ou malformadas. |
+| **Validade Expansível de Recibo (Replay Window)** | O webhook aceita eventos de até 48 horas atrás (tolerância para reentregas legítimas), mas rejeita qualquer requisição fora dessa janela ("Replay Attack"). |
 | **Ocultamento e Proteção de Dados (PII)** | Telefones e e-mails de clientes nunca são salvos nas listas de "Registro de erros e logs" por inteiro (Sempre `J***` e `j***@domain.com`). |
 
 ---
@@ -90,7 +90,7 @@ graph TD
 ## Comandos Técnicos e Tech Stack
 
 - **Core:** Next.js 16.2 (App Router), React 19, TypeScript 6.0.
-- **Design:** Tailwind CSS v4 e Base UI.
+- **Design:** Tailwind CSS v4, Lucide React e clsx/tailwind-merge.
 
 Para fazer rodar de forma isolada na sua máquina, utilize os logs baseados na biblioteca `.env.example`:
 
@@ -121,8 +121,8 @@ pnpm check:secrets   # Varre os arquivos verificando vazamento de suas senhas!
 
 Como existe uma dedicação ágil para realizar o processo em 72h, algumas pequenas coisas poderiam ficar atentas logo após jogar isso pro ar 100%:
 
-- **Muro anti-envios duplos extra severo:** Embora o HubSpot descarte contatos duplicados limpos, a adoção e construção de uma ferramento de "Cache Global" (um Redis da vida) mataria repetições estranhantes na fonte sem nem pedir pra carregar um segundo do Vercel. Demanda um projeto e servidor extra.
-- **Precisão das Horas da Submissão do CRM:** No HubSpot o campo de cadastro de Data criado absorve dia, mês, e ano da captação final (A hora com minutos exata via script nativo ficou retida nos Logs transparentes das submissões da Vercel para não corrompermos o limite do construtur do Formato ISO).
+- **Muro anti-envios duplos extra severo:** Embora o HubSpot descarte contatos duplicados limpos, a adoção e construção de uma ferramenta de "Cache Global" (um Redis da vida) mataria repetições suspeitas na fonte sem nem pedir pra carregar um segundo do Vercel. Demanda um projeto e servidor extra.
+- **Precisão das Horas da Submissão do CRM:** No HubSpot o campo de cadastro de Data criado absorve dia, mês, e ano da captação final (A hora com minutos exata via script nativo ficou retida nos Logs transparentes das submissões da Vercel para não corrompermos o limite do construtor do Formato ISO).
 - **Variáveis de Cores (CSS Variables):** A organização final com o novo *theme* puro embutido nas raízes do Tailwind V4 ficou para uma limpeza v2 para estabilizar as folhas em uso hoje no MVP.
 
 ---

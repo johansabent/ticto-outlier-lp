@@ -2,12 +2,12 @@ import Image from 'next/image';
 
 export default function Hero() {
   return (
-    <section className="relative z-10 w-full lg:w-[624px] mx-auto">
-      <header className="flex items-center justify-center lg:justify-start gap-4 lg:gap-[43px] mb-[37px] lg:mb-[95px]">
+    <section aria-labelledby="hero-heading" className="relative z-10 w-full lg:w-[624px] mx-auto">
+      <div className="flex items-center justify-center lg:justify-start gap-4 lg:gap-[43px] mb-[37px] lg:mb-[95px]">
         <Image src="/images/logo-ticto.png" alt="Ticto" width={153} height={44} className="w-[115px] h-[33px] lg:w-[153px] lg:h-[44px]" />
         <div className="w-[1px] h-[24px] lg:h-[32px] bg-white/20"></div>
         <Image src="/images/logo-ebulicao.png" alt="Ebulição" width={197} height={52} className="w-[148px] h-[39px] lg:w-[197px] lg:h-[52px]" />
-      </header>
+      </div>
 
       <div className="flex flex-col gap-[14px]">
         <div className="flex flex-col gap-[32px]">
@@ -17,13 +17,13 @@ export default function Hero() {
             </span>
           </div>
 
-          <h1 className="self-stretch text-[30px] lg:text-[32px] font-normal text-white leading-[1.2] font-inter tracking-normal">
+          <h1 id="hero-heading" className="self-stretch text-[30px] lg:text-[32px] font-normal text-white leading-[1.2] font-inter tracking-normal">
             A ebulição instantânea para produtos digitais e físicos começa com a maior e mais poderosa plataforma do Brasil
           </h1>
         </div>
 
         <p className="text-[16px] text-white leading-[1.4] font-space max-w-[624px]">
-          Milhares de empresários <strong className="font-bold">como você</strong> alavancaram seus negócios e alcançaram 6 e 7 dígitos no digital com as estratégias que compartilhamos.
+          Milhares de empresários <strong>como você</strong> alavancaram seus negócios e alcançaram 6 e 7 dígitos no digital com as estratégias que compartilhamos.
         </p>
       </div>
 
