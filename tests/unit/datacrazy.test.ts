@@ -9,6 +9,7 @@ function setEnv() {
   process.env.TYPEFORM_FORM_ID = 'FbFMsO5x';
   process.env.NEXT_PUBLIC_TYPEFORM_FORM_ID = 'FbFMsO5x';
   process.env.NEXT_PUBLIC_SITE_URL = 'https://example.com';
+  process.env.DATACRAZY_LEADS_ENDPOINT = 'https://api.g1.datacrazy.io/api/v1/leads/additional-fields';
 }
 
 const payload: DatacrazyLeadPayload = {
@@ -44,7 +45,7 @@ describe('lib/datacrazy', () => {
     expect(result).toEqual({ ok: true, status: 201, leadId: 'lead_42' });
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.g1.datacrazy.io/api/v1/leads');
+    expect(url).toBe('https://api.g1.datacrazy.io/api/v1/leads/additional-fields');
     expect((init as RequestInit).method).toBe('POST');
     const headers = new Headers((init as RequestInit).headers);
     expect(headers.get('authorization')).toBe('Bearer tok_live_abc');
@@ -103,5 +104,18 @@ describe('lib/datacrazy', () => {
     const result = await promise;
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errorClass).toBe('datacrazy_timeout');
+  });
+
+  it('respects DATACRAZY_LEADS_ENDPOINT override when set', async () => {
+    process.env.DATACRAZY_LEADS_ENDPOINT = 'https://api.g1.datacrazy.io/api/v1/leads';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'lead_1' }), { status: 201 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.resetModules();
+    const { postLead } = await import('@/lib/datacrazy');
+    await postLead(payload);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.g1.datacrazy.io/api/v1/leads');
   });
 });

@@ -2,8 +2,6 @@ import { getServerEnv } from '@/lib/env.server';
 import type { DatacrazyLeadPayload } from '@/lib/utm-mapping';
 import type { ErrorClass } from '@/lib/logger';
 
-const ENDPOINT = 'https://api.g1.datacrazy.io/api/v1/leads';
-
 export type PostLeadSuccess = {
   ok: true;
   status: number;
@@ -51,6 +49,7 @@ function extractLeadId(body: unknown): string | number | null {
 async function doPost(
   payload: DatacrazyLeadPayload,
   token: string,
+  endpoint: string,
   options: PostLeadOptions,
 ): Promise<Response> {
   const controller = new AbortController();
@@ -58,7 +57,7 @@ async function doPost(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const fetchImpl = options.fetchImpl ?? fetch;
-    return await fetchImpl(ENDPOINT, {
+    return await fetchImpl(endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -76,13 +75,13 @@ export async function postLead(
   payload: DatacrazyLeadPayload,
   options: PostLeadOptions = {},
 ): Promise<PostLeadResult> {
-  const { DATACRAZY_API_TOKEN } = getServerEnv();
+  const { DATACRAZY_API_TOKEN, DATACRAZY_LEADS_ENDPOINT } = getServerEnv();
   let attempt = 0;
   while (attempt < 2) {
     attempt += 1;
     let res: Response;
     try {
-      res = await doPost(payload, DATACRAZY_API_TOKEN, options);
+      res = await doPost(payload, DATACRAZY_API_TOKEN, DATACRAZY_LEADS_ENDPOINT, options);
     } catch (err) {
       // AbortError may be a DOMException (jsdom, browsers) that is not an
       // `instanceof Error` in some runtimes. Detect by name only, guarding
