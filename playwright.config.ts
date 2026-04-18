@@ -31,11 +31,11 @@ export default defineConfig({
         // can boot and `/api/lead` can reach its env-validation path without
         // a `.env.local`. These are FORCED literals — never fall back to
         // process.env — so running `pnpm e2e` on a developer machine with
-        // real credentials in the shell (DATACRAZY_API_TOKEN, TYPEFORM_WEBHOOK_SECRET)
+        // real credentials in the shell (HUBSPOT_PRIVATE_APP_TOKEN, TYPEFORM_WEBHOOK_SECRET)
         // can NEVER reach production CRM, and the test's hardcoded HMAC secret
         // always matches what the handler validates against.
         env: {
-          DATACRAZY_API_TOKEN: 'e2e-test-token',
+          HUBSPOT_PRIVATE_APP_TOKEN: 'e2e-test-token',
           TYPEFORM_WEBHOOK_SECRET: 'dev-placeholder-secret',
           TYPEFORM_FORM_ID: 'FbFMsO5x',
           NEXT_PUBLIC_TYPEFORM_FORM_ID: 'FbFMsO5x',
