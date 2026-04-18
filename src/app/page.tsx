@@ -28,7 +28,6 @@ export default function Page() {
           width={800}
           height={800}
           className="absolute top-0 right-0 max-w-[60vw] lg:max-w-none opacity-40 mix-blend-screen"
-          priority
         />
         <Image
           src="/images/bg-blur-left.svg"
@@ -36,7 +35,6 @@ export default function Page() {
           width={800}
           height={800}
           className="absolute bottom-1/4 lg:top-1/4 left-0 max-w-[70vw] lg:max-w-none opacity-30 mix-blend-screen"
-          priority
         />
       </div>
 
@@ -58,9 +56,9 @@ export default function Page() {
           className="w-full lg:w-[488px] flex flex-col order-2 lg:sticky lg:top-24 lg:h-fit relative z-20 mt-[51px] lg:mt-0"
         >
           <div className="rounded-2xl bg-bg-white p-8 shadow-xl">
-            <h2 className="mb-6 font-tomato text-xs font-bold uppercase tracking-wider text-accent-teal">
+            <p className="mb-6 font-tomato text-xs font-bold uppercase tracking-wider text-accent-teal">
               CADASTRO 100% GRATUITO
-            </h2>
+            </p>
             <TypeformEmbed formId={NEXT_PUBLIC_TYPEFORM_FORM_ID} />
             <p className="mt-4 text-xs text-placeholder leading-relaxed">
               Ao enviar seus dados, você autoriza que a Ticto entre em contato e

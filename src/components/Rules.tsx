@@ -15,8 +15,8 @@ export default function Rules() {
   ];
 
   return (
-    <div className="flex flex-col gap-[8px] relative z-10">
-      <h2 className="text-[14px] font-normal text-white opacity-50 font-space leading-[1.6]">
+    <section aria-labelledby="rules-heading" className="flex flex-col gap-[8px] relative z-10">
+      <h2 id="rules-heading" className="text-[14px] font-normal text-white/50 font-space leading-[1.6]">
         Confira as regras para participar
       </h2>
 
@@ -33,6 +33,6 @@ export default function Rules() {
           </li>
         ))}
       </ol>
-    </div>
+    </section>
   );
 }

@@ -24,7 +24,7 @@ function SocialIcons({ className }: { className: string }) {
                     rel="noopener noreferrer"
                     className="flex-1 lg:flex-none w-[44px] h-[44px] shrink-0 rounded-[8px] border border-white/20 flex items-center justify-center hover:bg-white/10 transition-colors"
                 >
-                    <Image src={src} alt={label} width={w} height={h} loading="lazy" />
+                    <Image src={src} alt="" width={w} height={h} loading="lazy" />
                 </Link>
             ))}
         </div>
@@ -82,7 +82,7 @@ export default function Footer() {
                             Suporte{" "}
                             <Image
                                 src="/images/icon-arrow.svg"
-                                alt="Arrow"
+                                alt=""
                                 width={14}
                                 height={14}
                                 aria-hidden="true"
@@ -145,10 +145,11 @@ export default function Footer() {
                             Crie sua conta
                             <Image
                                 src="/images/icon-arrow-sm.svg"
-                                alt="Arrow"
+                                alt=""
                                 width={24}
                                 height={24}
                                 loading="lazy"
+                                aria-hidden="true"
                             />
                         </Link>
                     </div>
@@ -160,7 +161,7 @@ export default function Footer() {
             {/* Bottom bar */}
             <div className="max-w-[1440px] mx-auto px-6 lg:px-[112px] pt-[32px] pb-[32px] flex flex-col lg:flex-row lg:justify-between items-center gap-4">
                 <p className="order-2 lg:order-none text-[14px] text-text-muted font-normal leading-[150%] tracking-[-0.154px] font-space text-center lg:text-left">
-                    © 2025 - Ticto Tecnologia - Todos os direitos reservados.
+                    © {new Date().getFullYear()} - Ticto Tecnologia - Todos os direitos reservados.
                     CNPJ sob nº 28.618.386/0001-19
                 </p>
                 {/* Badges */}

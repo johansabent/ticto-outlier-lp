@@ -55,10 +55,10 @@ export function TypeformEmbed({ formId }: { formId: string }) {
   return (
     <div className="space-y-7">
       <div className="border-l-2 border-brand-cyan pl-4">
-        <p className="font-tomato text-[32px] leading-[0.95] tracking-normal text-[#061016]">
+        <h2 className="font-tomato text-[32px] leading-[0.95] tracking-normal text-[#061016]">
           Garanta sua participação
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-[var(--color-placeholder)]">
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-placeholder">
           Preencha seus dados para concorrer ao ingresso do Ebulição.
         </p>
       </div>
@@ -70,16 +70,16 @@ export function TypeformEmbed({ formId }: { formId: string }) {
           data-tf-opacity="100"
           data-tf-hide-headers
           data-tf-size="100"
-          data-tf-iframe-props="title=Ticto Test"
+          data-tf-iframe-props="title=Formulário de cadastro Ebulição × Ticto"
           data-tf-transitive-search-params={TRANSITIVE_SEARCH_PARAMS}
           data-tf-medium="snippet"
           data-tf-hidden={hidden}
-          className="h-[56px] w-full rounded-[6px] bg-brand-cyan px-5 font-tomato text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#18a9c2] focus:outline-none focus:ring-2 focus:ring-brand-cyan focus:ring-offset-2 focus:ring-offset-bg-white"
+          className="h-[56px] w-full rounded-[6px] bg-brand-cyan px-5 font-tomato text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-brand-cyan-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-bg-white"
         >
           Cadastro 100% gratuito
         </button>
       ) : (
-        <div className="h-[56px] w-full animate-pulse rounded-[6px] bg-[#d6f4f8]" />
+        <div className="h-[56px] w-full animate-pulse rounded-[6px] bg-brand-cyan-light" />
       )}
 
       {attribution ? (
