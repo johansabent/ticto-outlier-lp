@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Server-only env validation. Never import this module from a client component —
-// doing so bundles the server-only var names (DATACRAZY_API_TOKEN,
+// doing so bundles the server-only var names (HUBSPOT_PRIVATE_APP_TOKEN,
 // TYPEFORM_WEBHOOK_SECRET, TYPEFORM_FORM_ID) into the client JS, and
 // `pnpm check:secrets` will flag it. Public env access lives in `env.client.ts`.
 
@@ -12,18 +12,21 @@ const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
 
 function buildServerSchema(isProduction: boolean) {
   return z.object({
-    DATACRAZY_API_TOKEN: z.string().trim().min(1, 'DATACRAZY_API_TOKEN is required'),
-    DATACRAZY_LEADS_ENDPOINT: z.preprocess(
+    HUBSPOT_PRIVATE_APP_TOKEN: z
+      .string()
+      .trim()
+      .min(1, 'HUBSPOT_PRIVATE_APP_TOKEN is required'),
+    HUBSPOT_API_BASE: z.preprocess(
       emptyToUndefined,
       z
         .string()
         .trim()
-        .url('DATACRAZY_LEADS_ENDPOINT must be a valid URL')
+        .url('HUBSPOT_API_BASE must be a valid URL')
         .refine((u) => u.startsWith('https://'), {
-          message: 'DATACRAZY_LEADS_ENDPOINT must use https',
+          message: 'HUBSPOT_API_BASE must use https',
         })
         .optional()
-        .default('https://api.g1.datacrazy.io/api/v1/leads'),
+        .default('https://api.hubapi.com'),
     ),
     TYPEFORM_WEBHOOK_SECRET: z.preprocess(
       emptyToUndefined,
