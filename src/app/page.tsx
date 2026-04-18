@@ -7,6 +7,15 @@ import Footer from '@/components/Footer';
 import { TypeformEmbed } from '@/components/typeform-embed';
 import { getClientEnv } from '@/lib/env.client';
 
+/**
+ * Renders the landing page layout with decorative background glows, the main content (Hero and Rules),
+ * and a right-hand registration card containing a Typeform embed.
+ *
+ * The component reads `NEXT_PUBLIC_TYPEFORM_FORM_ID` from client environment variables and passes it to
+ * `TypeformEmbed`.
+ *
+ * @returns The React element representing the full-page layout
+ */
 export default function Page() {
   const { NEXT_PUBLIC_TYPEFORM_FORM_ID } = getClientEnv();
 

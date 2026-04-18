@@ -1,3 +1,8 @@
+/**
+ * Renders a rules panel with three numbered participation steps.
+ *
+ * @returns A JSX element containing a header and a vertical list of three numbered steps describing how to participate.
+ */
 export default function Rules() {
   const steps = [
     {

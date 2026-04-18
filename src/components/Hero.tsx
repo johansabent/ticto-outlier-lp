@@ -1,5 +1,10 @@
 import Image from 'next/image';
 
+/**
+ * Renders the landing-page hero section containing partner logos, a headline and supporting copy, a promotional gradient frame with prize and phone imagery, and a final descriptive paragraph.
+ *
+ * @returns The hero section as a JSX element
+ */
 export default function Hero() {
   return (
     <section className="relative z-10 w-full lg:w-[624px] mx-auto">
