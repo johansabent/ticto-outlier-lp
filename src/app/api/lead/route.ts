@@ -3,8 +3,8 @@ import { getServerEnv } from '@/lib/env.server';
 import { getClientEnv } from '@/lib/env.client';
 import { verifyTypeformSignature } from '@/lib/webhook-auth';
 import { parseAnswers, type TypeformAnswer } from '@/lib/typeform-fields';
-import { mapUtms, buildDatacrazyPayload } from '@/lib/utm-mapping';
-import { postLead } from '@/lib/datacrazy';
+import { mapUtms, buildHubspotContactPayload } from '@/lib/utm-mapping';
+import { postLead } from '@/lib/hubspot';
 import { logger, redactEmail, redactName, redactPhone } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -18,7 +18,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 // Landing URL validation: `hidden.landing_page` is populated client-side
 // from localStorage (see <TypeformEmbed>), which means a page visitor can
 // stuff arbitrary strings into it before submitting the form. Cap + URL-
-// validate at the trust boundary so Datacrazy records don't accumulate
+// validate at the trust boundary so HubSpot records don't accumulate
 // garbage. Lenient-with-fallback: invalid values fall back to NEXT_PUBLIC_SITE_URL
 // rather than rejecting the lead.
 const MAX_LANDING_URL_LENGTH = 2048;
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
       answers?: TypeformAnswer[];
       hidden?: Record<string, string>;
       token?: string;
-      // ISO-8601 from Typeform. Used as `capturedAt` for Datacrazy so lead
+      // ISO-8601 from Typeform. Used as `capturedAt` for HubSpot so lead
       // attribution reflects when the user actually submitted, not when our
       // webhook happened to run (could be seconds-to-minutes later on retries).
       submitted_at?: string;
@@ -239,26 +239,25 @@ export async function POST(req: Request) {
     clientEnv.NEXT_PUBLIC_SITE_URL,
   );
 
-  // 6. Build Datacrazy payload. capturedAt prefers Typeform's submitted_at
+  // 6. Build HubSpot payload. capturedAt prefers Typeform's submitted_at
   // (authoritative for lead attribution) and only falls back to wall-clock
   // if Typeform omits it — matters for retries/delayed webhooks where our
   // processing time could lag the real submission by minutes.
-  const datacrazyPayload = buildDatacrazyPayload({
+  const hubspotPayload = buildHubspotContactPayload({
     answers,
     utms,
     landingUrl,
     capturedAt: body.form_response.submitted_at ?? new Date().toISOString(),
   });
 
-  // 7. POST to Datacrazy (sync — no waitUntil needed for 72h scope).
-  // KNOWN GAP: no idempotency dedup. If postLead's 429 retry or Typeform's
-  // own retry (triggered by our 5xx) re-enters this flow, Datacrazy may
-  // accept duplicate leads keyed on `form_response.token`. A KV/Redis-backed
-  // token LRU would close this; it's out of the 72h scope per the plan
-  // (Task 8 commit message deferred event_id dedup to "when persistence is
-  // provisioned"). Accept the duplicate risk for now.
+  // 7. POST to HubSpot (sync — no waitUntil needed for 72h scope).
+  // Duplicate handling: HubSpot returns 409 when an email already exists;
+  // `postLead` maps that to `{ ok: true, status: 409, leadId: null, duplicate: true }`.
+  // That's sufficient for teste técnico scope — the route treats repeated
+  // Typeform retries of the same email as idempotent success rather than
+  // requiring a KV/Redis-backed token LRU.
   const crmT0 = Date.now();
-  const crm = await postLead(datacrazyPayload);
+  const crm = await postLead(hubspotPayload);
   const crmMs = Date.now() - crmT0;
 
   if (!crm.ok) {
@@ -267,21 +266,21 @@ export async function POST(req: Request) {
       request_id: requestId,
       submission_id: body.form_response.token,
       error_class: crm.errorClass,
-      // bodySnippet comes from Datacrazy's own error body (capped at 512 chars
+      // bodySnippet comes from HubSpot's own error body (capped at 512 chars
       // by safeRead) — safe to include for observability.
-      error_message: `datacrazy ${crm.status}: ${crm.bodySnippet}`,
+      error_message: `hubspot ${crm.status}: ${crm.bodySnippet}`,
     });
     return NextResponse.json({ error: 'crm_failed' }, { status: 500 });
   }
 
-  // 8. Success — PII-redacted log. Full values already sent to Datacrazy;
+  // 8. Success — PII-redacted log. Full values already sent to HubSpot;
   // logs only get masked hints per the AGENTS.md PII invariant.
   logger.info({
     event: 'lead.forwarded',
     request_id: requestId,
     submission_id: body.form_response.token,
-    datacrazy_status: crm.status,
-    datacrazy_lead_id: crm.leadId,
+    hubspot_status: crm.status,
+    hubspot_contact_id: crm.leadId,
     timing_ms: crmMs,
     email_hint: redactEmail(answers.email),
     phone_hint: redactPhone(answers.telefone),
