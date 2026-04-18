@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     ".pnpm-cache/**",
     // Agent + audit artefacts (transient; never shipped):
     ".claude/**",
+    "test-results/**",
+    "playwright-report/**",
     "visual-audit-out/**",
   ]),
 ]);

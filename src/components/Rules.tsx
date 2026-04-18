@@ -20,19 +20,19 @@ export default function Rules() {
         Confira as regras para participar
       </h2>
 
-      <div className="flex flex-col gap-[14px]">
+      <ol className="flex flex-col gap-[14px]">
         {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-[14px] w-full text-[16px]">
-            <div className="text-brand-cyan font-bold font-space leading-[1.6] flex-shrink-0">
+          <li key={i} className="flex items-center gap-[14px] w-full text-[16px]">
+            <span className="text-brand-cyan font-bold font-space leading-[1.6] flex-shrink-0">
               {step.num}
-            </div>
-            <div className="w-[4px] h-[4px] bg-[#5bbed9] flex-shrink-0"></div>
+            </span>
+            <span className="w-[4px] h-[4px] bg-[#5bbed9] flex-shrink-0" aria-hidden="true" />
             <p className="flex-1 text-white font-space font-normal leading-[1.2] whitespace-pre-wrap">
               {step.text}
             </p>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }

@@ -8,7 +8,7 @@ Landing page de captura de leads para o **Ebulição** (evento Outlier Experienc
 - **Spec do produto:** [`docs/superpowers/specs/2026-04-15-ticto-lp-design.md`](docs/superpowers/specs/2026-04-15-ticto-lp-design.md)
 - **ADR de autenticação:** [`docs/decisions/2026-04-16-typeform-webhook-auth.md`](docs/decisions/2026-04-16-typeform-webhook-auth.md)
 
-> **Sobre a escolha Typeform × YayForms:** o briefing lista YayForms como sugestão, mas o **Gustavo (Head de Marketing da Ticto)** confirmou diretamente via WhatsApp que a Ticto **usa Typeform em produção** e que o YayForms foi **descontinuado este mês**. A escolha de Typeform para esta entrega é oficialmente aprovada — a integração aqui espelha o provider real da plataforma.
+> **Sobre a escolha Typeform × YayForms:** o briefing solicitava YayForms, mas o **Gustavo (Head de Marketing da Ticto)** confirmou diretamente via WhatsApp que a Ticto **usa Typeform em produção** e que o YayForms foi **descontinuado este mês**. A troca para Typeform foi aprovada e a integração aqui espelha o provider real da plataforma.
 
 ### URL de teste parametrizada
 
@@ -17,6 +17,16 @@ https://ticto-outlier-lp.vercel.app/?utm_source=linkedin&utm_medium=organic&utm_
 ```
 
 Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e repassados ao Typeform como hidden fields até chegarem ao Datacrazy.
+
+### Status dos entregáveis do briefing
+
+| Item | Status |
+|---|---|
+| URL publicada | https://ticto-outlier-lp.vercel.app/ |
+| Repositório público | https://github.com/johansabent/ticto-ebulicao-lp |
+| URL parametrizada | Ver exemplo acima com `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck` e `src`. |
+| Evidência CRM | A submissão real chega ao webhook, valida HMAC, mapeia os campos e tenta criar o lead no Datacrazy. A conta Free/Trial bloqueia a persistência com `code: "upgrade-plan"`; o registro abaixo documenta essa limitação da plataforma e o ponto exato em que o fluxo para. |
+| README | Este arquivo contém setup local, decisões técnicas, dificuldades e limitações. |
 
 ---
 
@@ -118,9 +128,9 @@ app/page.tsx (RSC)  ──►  <UTMRehydrator /> (client, useLayoutEffect)
   │                        • 1ª visita com UTMs → grava first-touch em localStorage
   │                        • Visita sem UTMs   → re-injeta URL antes do paint
   ▼
-<TypeformEmbed />  (@typeform/embed-react, inline)
+<TypeformEmbed />  (popup Typeform via embed script)
   │  • Lê UTMs+landing_page do localStorage via lib/attribution.ts
-  │  • Passa 8 hidden fields ao widget (7 UTMs + landing_page)
+  │  • Passa 8 hidden fields ao popup (7 UTMs + landing_page)
   ▼
 Typeform form (id: FbFMsO5x)  ──►  servidores do Typeform
   │
@@ -136,7 +146,7 @@ app/api/lead/route.ts (Vercel Fluid Compute, runtime Node 24)
                   (fetch com timeout, retry em 429, result tipado)
   7. Log estruturado com PII redigida (email/phone/nome)
   ▼
-Datacrazy lead criado com:
+Datacrazy API recebe payload com:
   • source                        ← utm_source
   • sourceReferral.sourceUrl      ← landing_page completa com querystring
   • notes                         ← JSON com os 7 params + capturedAt + landing_page
@@ -148,7 +158,7 @@ O atributo `data-tf-transitive-search-params` do Typeform lê apenas da URL atua
 
 1. `lib/attribution.ts` grava os 7 params + `landing_page` em `localStorage` na primeira visita com UTMs.
 2. `<UTMRehydrator />` usa `useLayoutEffect` para, em visitas subsequentes sem UTM, reescrever a URL via `history.replaceState` **antes do paint** e antes do script do Typeform anexar ao DOM.
-3. `<TypeformEmbed />` (do pacote `@typeform/embed-react`) passa os 8 hidden fields ao widget via a prop `hidden`, não dependendo da reescrita da URL.
+3. `<TypeformEmbed />` renderiza o botão popup do Typeform e passa os 8 hidden fields via `data-tf-hidden`, não dependendo da reescrita da URL.
 
 Trade-off consciente: a URL copiada após a reescrita contém os params originais. O ganho é atribuição first-touch preservada entre sessões, sem forkar a lib do Typeform.
 
@@ -164,7 +174,7 @@ Trade-off consciente: a URL copiada após a reescrita contém os params originai
 | UI | **Tailwind CSS ^4** (CSS-first, `@theme`) + **shadcn/ui** (Base UI + `data-slot`, sem `forwardRef`) | Sem `tailwind.config.ts`. |
 | Animações | `tw-animate-css` | `tailwindcss-animate` deprecated em 2025. |
 | Validação env | **Zod ^4** | Schema Zod fail-fast em `lib/env.server.ts` e `lib/env.client.ts`. |
-| Form embed | **`@typeform/embed-react` ^4.11** | Widget inline, hidden fields via prop. |
+| Form embed | **Typeform embed script** | Popup aprovado pelo snippet `data-tf-live`; hidden fields via `data-tf-hidden`. |
 | Unit tests | **Vitest ^2.1** | 59 testes, 7 arquivos. |
 | E2E | **Playwright ^1.59** | Trigger `deployment_status` no CI contra Preview. |
 | Package manager | **pnpm 10.33** | `engines.node >=24 <25`. |
@@ -196,9 +206,9 @@ pnpm dev                     # http://localhost:3000
 |---|---|---|
 | `DATACRAZY_API_TOKEN` | **server-only** | Datacrazy → Configurações → API (token exibido 1× ao criar). |
 | `TYPEFORM_WEBHOOK_SECRET` | **server-only**, min. 16 chars em produção | Typeform → Connect → Webhooks → Edit → Secret. |
-| `TYPEFORM_FORM_ID` | **server-only** | ID do formulário (atual: `FbFMsO5x`). Validado na inicialização via zod em `env.server.ts`. Hoje não é cruzado contra `form_response.form_id` no route handler — gap conhecido, documentado em [Lacunas conhecidas](#lacunas-conhecidas). |
+| `TYPEFORM_FORM_ID` | **server-only** | ID do formulário (atual: `FbFMsO5x`). Validado na inicialização via zod em `env.server.ts` e cruzado contra `form_response.form_id` no webhook. |
 | `NEXT_PUBLIC_SITE_URL` | público (OG/canonical) | URL base do deploy. Ex.: `https://ticto-outlier-lp.vercel.app`. |
-| `NEXT_PUBLIC_TYPEFORM_FORM_ID` | público (widget client-side) | Mesmo valor de `TYPEFORM_FORM_ID`. A duplicação é intencional e documentada em `AGENTS.md`. |
+| `NEXT_PUBLIC_TYPEFORM_FORM_ID` | público (popup client-side) | Mesmo valor de `TYPEFORM_FORM_ID`. A duplicação é intencional e documentada em `AGENTS.md`. |
 
 Vars `NEXT_PUBLIC_*` adicionais estão proibidas pela allowlist em `AGENTS.md`.
 
@@ -279,9 +289,7 @@ Em respeito ao tempo de 72h e ao escopo do teste, aceitei as seguintes limitaç�
 - **CSP não configurada.** `proxy.ts` aplica apenas `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` e HSTS. CSP rigorosa sem quebrar o embed Typeform exige iteração fora do escopo.
 - **Contraste WCAG em `btn-primary`.** Combinação documentada para revisão visual; não bloqueia entrega.
 - **Indireção `--font-*` em CSS vars.** Próximo passo é expor as fontes via `@theme` em vez de redeclarar.
-- **Marcação `<ol>` ausente nas "Regras".** O componente `Rules.tsx` usa `<div>` onde semanticamente um `<ol>` seria correto. A11y flag tracked.
 - **`.github/workflows/claude.yml` removido.** O repo é público; sem `ANTHROPIC_API_KEY` configurada, o workflow do Claude GitHub Action ficaria no vermelho. Removido enquanto a chave não for provisionada.
-- **`TYPEFORM_FORM_ID` não é cruzado contra `form_response.form_id`.** A env var existe e é validada por zod na inicialização, mas o route handler não compara o `form_id` do payload Typeform contra ela. Um atacante com o HMAC secret poderia, em tese, enviar um payload de *outro* form assinado corretamente e ele seria aceito. Proteção adicional de baixo custo: dois `if (body.form_response.form_id !== env.TYPEFORM_FORM_ID) return 403;` depois do HMAC check. Não crítico porque o HMAC secret é per-form no Typeform (vazar o secret já compromete todo o fluxo), mas vale fechar.
 - **P1s da auditoria de cobertura (Task 23).** Listados acima; pós-ship.
 
 Essa lista é explícita exatamente porque o avaliador merece ver **onde o escopo foi cortado** e por quê, em vez de descobrir depois.
@@ -302,7 +310,7 @@ src/
 │   ├── Hero.tsx                 Hero RSC com CTA.
 │   ├── Rules.tsx                Bloco de regras do evento.
 │   ├── Footer.tsx               Rodapé.
-│   ├── typeform-embed.tsx       Client: <Widget> do @typeform/embed-react + hidden fields.
+│   ├── typeform-embed.tsx       Client: popup Typeform + hidden fields.
 │   ├── utm-rehydrator.tsx       Client: first-touch save + history.replaceState.
 │   └── ui/button.tsx            shadcn primitive.
 ├── lib/

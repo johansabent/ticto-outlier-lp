@@ -1,5 +1,6 @@
 export type ErrorClass =
   | 'auth_invalid'
+  | 'form_id_mismatch'
   | 'parse_error'
   | 'field_map_incomplete'
   | 'datacrazy_4xx'

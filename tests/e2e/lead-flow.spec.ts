@@ -73,9 +73,10 @@ test.describe('Lead flow — E2E', () => {
 
     // Form card
     await expect(page.getByRole('heading', { name: /CADASTRO 100% GRATUITO/i })).toBeVisible();
+    await expect(page.locator('[data-tf-popup="FbFMsO5x"]')).toBeVisible();
 
     // Footer — presence of legal copy is a robust anchor
-    await expect(page.getByText(/Políticas e Termos/i)).toBeVisible();
+    await expect(page.locator('#politicas-termos')).toBeVisible();
   });
 
   test('UTMRehydrator persists first-touch params to localStorage', async ({ page }) => {
@@ -99,6 +100,14 @@ test.describe('Lead flow — E2E', () => {
     expect(parsed.sck).toBe('abc123');
     expect(parsed.src).toBe('review');
     expect(parsed.landing_page).toContain(UTM_QUERY);
+
+    const popupButton = page.locator('[data-tf-popup="FbFMsO5x"]');
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /utm_source=linkedin/);
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /utm_medium=organic/);
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /utm_campaign=ebulicao2026/);
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /sck=abc123/);
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /src=review/);
+    await expect(popupButton).toHaveAttribute('data-tf-hidden', /landing_page=http/);
   });
 
   test('/api/lead rejects payloads with missing HMAC signature (401)', async ({ request }) => {
@@ -121,6 +130,27 @@ test.describe('Lead flow — E2E', () => {
       data: body,
     });
     expect(res.status()).toBe(401);
+  });
+
+  test('/api/lead rejects correctly-signed payloads from an unexpected form (403)', async ({
+    request,
+  }) => {
+    test.skip(
+      !!process.env.PLAYWRIGHT_TEST_BASE_URL,
+      'Signed-payload test requires deterministic local webServer env; skip against remote deployments.',
+    );
+    const body = JSON.stringify(buildTypeformPayload({ form_id: 'wrong-form-id' }));
+    const signature = signBody(body, WEBHOOK_SECRET);
+    const res = await request.post('/api/lead', {
+      headers: {
+        'content-type': 'application/json',
+        'typeform-signature': signature,
+      },
+      data: body,
+    });
+    expect(res.status()).toBe(403);
+    const json = (await res.json()) as { error?: string };
+    expect(json.error).toBe('unexpected_form_id');
   });
 
   test('/api/lead accepts a correctly-signed payload and attempts CRM forwarding', async ({
