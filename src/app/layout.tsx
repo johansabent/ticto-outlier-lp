@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
+import { Inter } from 'next/font/google';
 import './globals.css';
 
 const tomatoGrotesk = localFont({
@@ -23,6 +24,12 @@ const spaceGrotesk = localFont({
   display: 'swap',
 });
 
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   title: 'Ebulição × Ticto',
@@ -36,7 +43,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${tomatoGrotesk.variable} ${spaceGrotesk.variable}`}>
+    <html lang="pt-BR" className={`${tomatoGrotesk.variable} ${spaceGrotesk.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );

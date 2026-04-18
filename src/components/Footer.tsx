@@ -54,7 +54,7 @@ export default function Footer() {
                             className="w-[114px] h-[36px] object-contain"
                         />
                     </div>
-                    <p className="text-[16px] font-normal text-[#d9d9d9] font-tomato leading-[1.5] tracking-[-0.176px] text-center lg:text-left">
+                    <p className="text-[16px] font-normal text-text-muted font-tomato leading-[1.5] tracking-[-0.176px] text-center lg:text-left">
                     A Ticto é a única plataforma focada em vendas e conversão de produtos físicos e digitais 💡
                     </p>
                     {/* Socials — desktop only in this position */}
@@ -137,10 +137,7 @@ export default function Footer() {
                             />
                         </Link>
                     </div>
-                    <div
-                        className="relative w-full rounded-[32px] p-[2px]"
-                        style={{ background: 'linear-gradient(90deg, #FF9C2B, #FF2689, #9747FF)' }}
-                    >
+                    <div className="gradient-cta-border relative w-full rounded-[32px] p-[2px]">
                         <Link
                             href="#cadastro"
                             className="flex w-full items-center justify-between px-[24px] py-[16px] rounded-[30px] bg-bg-black font-bold text-[16px] font-tomato tracking-[-0.176px] text-white hover:bg-white/5 transition-colors"
@@ -162,7 +159,7 @@ export default function Footer() {
 
             {/* Bottom bar */}
             <div className="max-w-[1440px] mx-auto px-6 lg:px-[112px] pt-[32px] pb-[32px] flex flex-col lg:flex-row lg:justify-between items-center gap-4">
-                <p className="order-2 lg:order-none text-[14px] text-[#D9D9D9] font-normal leading-[150%] tracking-[-0.154px] font-space text-center lg:text-left">
+                <p className="order-2 lg:order-none text-[14px] text-text-muted font-normal leading-[150%] tracking-[-0.154px] font-space text-center lg:text-left">
                     © 2025 - Ticto Tecnologia - Todos os direitos reservados.
                     CNPJ sob nº 28.618.386/0001-19
                 </p>
@@ -190,7 +187,7 @@ export default function Footer() {
                     href={TIC_TO_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="order-3 lg:order-none text-[14px] text-[#d9d9d9] tracking-[-0.154px] font-space underline decoration-solid hover:text-white transition-colors lg:ml-4"
+                    className="order-3 lg:order-none text-[14px] text-text-muted tracking-[-0.154px] font-space underline decoration-solid hover:text-white transition-colors lg:ml-4"
                 >
                     Políticas e Termos
                 </Link>

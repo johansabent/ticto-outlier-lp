@@ -43,16 +43,14 @@ export default function Hero() {
             alt="iPhone 16 Pro"
             width={113}
             height={170}
-            className="lg:hidden absolute max-w-none"
-            style={{ left: '-10.707px', top: '-36.68px', width: '113px', height: '170px' }}
+            className="lg:hidden absolute max-w-none left-[-10.707px] top-[-36.68px] w-[113px] h-[170px]"
           />
           <Image
             src="/images/iphone-16-pro.png"
             alt="iPhone 16 Pro"
             width={214}
             height={322}
-            className="hidden lg:block absolute max-w-none"
-            style={{ left: '-19.576px', top: '-68.955px', width: '214px', height: '322px' }}
+            className="hidden lg:block absolute max-w-none left-[-19.576px] top-[-68.955px] w-[214px] h-[322px]"
           />
           <div className="absolute left-[43px] top-[69px] lg:left-[81.85px] lg:top-[117.69px] opacity-90">
             <Image src="/images/logo-ticto-phone.svg" alt="Ticto" width={44} height={13} className="w-[23px] h-[7px] lg:w-[44.292px] lg:h-[12.655px]" />
