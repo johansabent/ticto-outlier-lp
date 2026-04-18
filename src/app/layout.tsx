@@ -41,6 +41,14 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Root layout component that wraps page content and applies the global fonts and document language.
+ *
+ * Renders an `<html lang="pt-BR">` element with the configured font CSS variables and places `children` inside the document `<body>`.
+ *
+ * @param children - The content to render inside the page body
+ * @returns A React element representing the root HTML document
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${tomatoGrotesk.variable} ${spaceGrotesk.variable} ${inter.variable}`}>

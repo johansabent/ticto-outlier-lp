@@ -31,6 +31,13 @@ function SocialIcons({ className }: { className: string }) {
     );
 }
 
+/**
+ * Render the site footer with branding, navigation, app download links, call-to-action, badges, and social icons.
+ *
+ * The layout adapts responsively: desktop places social icons beside the logo and shows section headings, while mobile shows socials after the app store buttons and stacks columns vertically.
+ *
+ * @returns The rendered footer element containing the complete footer layout and interactive links.
+ */
 export default function Footer() {
     return (
         <footer className="w-full bg-bg-black border-t border-white/5 relative z-10">
