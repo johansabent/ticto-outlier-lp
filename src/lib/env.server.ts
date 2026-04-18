@@ -13,6 +13,18 @@ const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
 function buildServerSchema(isProduction: boolean) {
   return z.object({
     DATACRAZY_API_TOKEN: z.string().trim().min(1, 'DATACRAZY_API_TOKEN is required'),
+    DATACRAZY_LEADS_ENDPOINT: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .trim()
+        .url('DATACRAZY_LEADS_ENDPOINT must be a valid URL')
+        .refine((u) => u.startsWith('https://'), {
+          message: 'DATACRAZY_LEADS_ENDPOINT must use https',
+        })
+        .optional()
+        .default('https://api.g1.datacrazy.io/api/v1/leads'),
+    ),
     TYPEFORM_WEBHOOK_SECRET: z.preprocess(
       emptyToUndefined,
       isProduction

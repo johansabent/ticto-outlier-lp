@@ -24,9 +24,13 @@ Campos documentados no body (nenhum marcado como obrigatório na docs — apenas
 
 Regra prática (da docs de automações, não do endpoint REST): a identificação de lead no ecossistema Datacrazy usa **"Nome + Telefone"** ou **"Nome + Email"**.
 
-## 🚨 ALERTA CRÍTICO — mapeamento de UTMs
+## 🚨 ALERTA CRÍTICO — mapeamento de UTMs (CORRIGIDO 2026-04-17)
 
-**O endpoint REST não tem campo `customFields` / `additionalFields` documentado.**
+**Correção:** a claim original de que "O endpoint REST não tem campo `customFields` / `additionalFields` documentado" foi falsificada pela inspeção direta do OpenAPI spec (`https://api.datacrazy.io/v1/api/openapi/v1/json`). Existe um segundo endpoint — `POST /api/v1/leads/additional-fields` — com body `LeadWithAdditionalFieldsDto` que inclui o array `additionalFields: AdditionalFieldValueDto[]`. Esse endpoint está ausente de `docs.datacrazy.io/llms.txt`, o que provavelmente explica por que não foi detectado na pesquisa inicial via leitura da docs humana.
+
+Ver `docs/superpowers/plans/2026-04-17-datacrazy-additional-fields-experiment.md` e a seção "Descoberta / Resolução" do `README.md` para as evidências da experiência contra o plan-gate.
+
+**Estratégia original (fallback ainda válida quando o endpoint alternativo não está disponível ou o plan-gate é resource-level):**
 
 Como o teste pede **7 parâmetros** (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `sck`, `src`) e vale **25% da nota**, precisamos de estratégia de mapeamento criativa.
 
