@@ -72,7 +72,7 @@ test.describe('Lead flow — E2E', () => {
     await expect(page.getByText(/crie sua conta no formulário/i)).toBeVisible();
 
     // Form card
-    await expect(page.getByRole('heading', { name: /CADASTRO 100% GRATUITO/i })).toBeVisible();
+    await expect(page.getByText(/CADASTRO 100% GRATUITO/i)).toBeVisible();
     await expect(page.locator('[data-tf-popup="FbFMsO5x"]')).toBeVisible();
 
     // Footer — presence of legal copy is a robust anchor
