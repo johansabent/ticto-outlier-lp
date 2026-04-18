@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: false
+    drafts: false
+  path_filters:
+    - "!**/.next/**"
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.turbo/**"
+    - "!**/.vercel/**"
+    - "!**/coverage/**"
+    - "!**/playwright-report/**"
+    - "!**/test-results/**"
+    - "!**/*.lock"
+    - "!**/pnpm-lock.yaml"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.svg"
+    - "!public/**"
+  path_instructions:
+    - path: "src/app/**/*.{ts,tsx}"
+      instructions: |
+        Next.js 16 App Router with React 19. Enforce Server Components by default — flag unnecessary "use client".
+        Verify Tailwind v4 CSS-first patterns (no tailwind.config.ts). shadcn v4 with Base UI + data-slot.
+    - path: "src/app/api/**/route.ts"
+      instructions: |
+        Route handlers must keep all auth, HMAC validation, and body parsing server-side.
+        Typeform webhooks: verify HMAC-SHA256 base64 with timingSafeEqual and replay window (60s future / 48h past).
+        Outbound Datacrazy calls must stay direct API — reject any Zapier/Make/n8n middleware reintroduction.
+    - path: "src/proxy.ts"
+      instructions: |
+        proxy.ts is for security headers ONLY. Reject any request auth, body validation, or business logic moved here.
+    - path: "src/lib/env/**/*.ts"
+      instructions: |
+        Public env var allowlist is strict: only NEXT_PUBLIC_SITE_URL and NEXT_PUBLIC_TYPEFORM_FORM_ID.
+        Any new NEXT_PUBLIC_* needs explicit allowlist update in the same PR.
+    - path: "src/components/**/*.tsx"
+      instructions: |
+        shadcn v4 components use Base UI + data-slot. Prefer composition over new primitives.
+        Flag client-only hooks in Server Components.
+    - path: "src/app/globals.css"
+      instructions: |
+        Tailwind v4 uses @theme for tokens. Reject legacy tailwind.config.ts patterns.
+    - path: "tests/unit/**/*.{ts,tsx}"
+      instructions: |
+        Vitest 2.1.x. Keep PII-redaction assertions intact (j***@domain.com, ***-1234, J***).
+    - path: "tests/e2e/**/*.spec.ts"
+      instructions: |
+        Playwright 1.59.x. E2E runs against Vercel preview via deployment_status trigger.
+        Prefer role-based selectors; avoid fragile text matches that collide with Typeform embed copy.
+    - path: "docs/**/*.md"
+      instructions: |
+        Docs changes must not contradict AGENTS.md invariants (server-side secrets, proxy.ts scope, direct-API integration, PII masking).
+    - path: "package.json"
+      instructions: |
+        Node 24 LTS, pnpm 10.33.x. Flag new runtime deps — prefer first-party APIs over middleware SaaS.
+    - path: ".github/workflows/**/*.yml"
+      instructions: |
+        Workflows use pnpm@10.33.0 and Node 24. E2E depends on deployment_status — do not break that trigger.
+  pre_merge_checks:
+    docstrings:
+      mode: "warning"
+    title:
+      mode: "warning"
+chat:
+  auto_reply: true
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: "local"
+  issues:
+    scope: "local"
+code_generation:
+  docstrings:
+    language: "en-US"
