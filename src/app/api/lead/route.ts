@@ -153,6 +153,7 @@ export async function POST(req: Request) {
   const rawBody = bodyBytes.toString('utf8');
   let body: {
     form_response?: {
+      form_id?: string;
       answers?: TypeformAnswer[];
       hidden?: Record<string, string>;
       token?: string;
@@ -182,6 +183,17 @@ export async function POST(req: Request) {
       error_message: 'missing_form_response',
     });
     return NextResponse.json({ error: 'missing_form_response' }, { status: 400 });
+  }
+
+  if (body.form_response.form_id !== serverEnv.TYPEFORM_FORM_ID) {
+    logger.error({
+      event: 'lead.failed',
+      request_id: requestId,
+      submission_id: body.form_response.token,
+      error_class: 'form_id_mismatch',
+      error_message: `unexpected_form_id: ${body.form_response.form_id ?? 'missing'}`,
+    });
+    return NextResponse.json({ error: 'unexpected_form_id' }, { status: 403 });
   }
 
   // 4. Extract fields by ref.
