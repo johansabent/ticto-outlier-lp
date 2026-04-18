@@ -5,8 +5,6 @@ Landing page de captura de leads para o **Ebulição** (evento Outlier Experienc
 - **Produção:** https://ticto-outlier-lp.vercel.app/
 - **Repositório:** https://github.com/johansabent/ticto-ebulicao-lp
 - **Briefing original:** [`docs/teste-tecnico-automacoes.md`](docs/teste-tecnico-automacoes.md)
-- **Spec do produto:** [`docs/superpowers/specs/2026-04-15-ticto-lp-design.md`](docs/superpowers/specs/2026-04-15-ticto-lp-design.md)
-- **ADR de autenticação:** [`docs/decisions/2026-04-16-typeform-webhook-auth.md`](docs/decisions/2026-04-16-typeform-webhook-auth.md)
 
 > **Sobre a escolha Typeform × YayForms:** o briefing solicitava YayForms, mas o **Gustavo (Head de Marketing da Ticto)** confirmou diretamente via WhatsApp que a Ticto **usa Typeform em produção** e que o YayForms foi **descontinuado este mês**. A troca para Typeform foi aprovada e a integração aqui espelha o provider real da plataforma.
 
@@ -37,8 +35,6 @@ Os 7 parâmetros são capturados no first-touch, persistidos em `localStorage` e
 ### Experiência executada
 
 Para confirmar a hipótese, a variável `DATACRAZY_LEADS_ENDPOINT` foi adicionada em [`src/lib/env.server.ts`](src/lib/env.server.ts) como env var opcional (zod-validada, default `/api/v1/leads`) e [`src/lib/datacrazy.ts`](src/lib/datacrazy.ts#L5) passou a ler o endpoint via `getServerEnv()` em vez de constante hardcoded. No Vercel preview da branch `experiment/datacrazy-additional-fields`, a env foi setada para `https://api.g1.datacrazy.io/api/v1/leads/additional-fields`, preview foi redeployado, e uma submissão real foi disparada via webhook do Typeform (`form_id: FbFMsO5x`, HMAC `sha256` válida).
-
-O plano completo da experiência está em [`docs/superpowers/plans/2026-04-17-datacrazy-additional-fields-experiment.md`](docs/superpowers/plans/2026-04-17-datacrazy-additional-fields-experiment.md).
 
 ### Evidência — ambos os endpoints, mesma resposta
 
@@ -326,7 +322,7 @@ src/
 
 tests/unit/                      7 arquivos, 59 testes (Vitest).
 scripts/check-secrets.mjs        Guard: server-only env vars ∉ client bundle.
-docs/                            Briefing, spec, ADRs, research, handover prompts.
+docs/                            Briefing original do teste técnico.
 .github/workflows/ci.yml         typecheck + lint + test + check:secrets.
 .github/workflows/e2e.yml        Playwright contra Preview URL (trigger: deployment_status).
 ```

@@ -5,7 +5,7 @@ This project uses a unified agent-config baseline. The durable repository rules,
 
 - **Primary Contract:** [AGENTS.md](./AGENTS.md)
 - **Local Workflows:** [.agent/workflows/](./.agent/workflows/)
-- **Product Spec:** [docs/superpowers/specs/2026-04-15-ticto-lp-design.md](./docs/superpowers/specs/2026-04-15-ticto-lp-design.md)
+- **Original Briefing:** [docs/teste-tecnico-automacoes.md](./docs/teste-tecnico-automacoes.md)
 
 ## Gemini-Specific Role
 In this repository, Gemini acts as the **Adversarial Frontend Reviewer & Senior Integration Architect**.

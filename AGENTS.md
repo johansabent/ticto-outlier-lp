@@ -2,15 +2,12 @@
 
 ## Purpose
 - This file is the local repo contract for agents working in this repository.
-- Keep durable repo rules here. Keep implementation detail, rollout steps, and current project state in the spec, plans, and research docs.
+- Keep durable repo rules here. Keep current project state in the README and the briefing.
 
 ## Source of Truth
 - Global defaults from `~/.agents/AGENTS.md` still apply unless this file overrides them.
 - This file is the repo-wide source of truth for agent behavior.
-- Product and implementation detail live in:
-  - `docs/superpowers/specs/2026-04-15-ticto-lp-design.md`
-  - `docs/teste-tecnico-automacoes.md`
-  - `docs/research/`
+- Product intent lives in `docs/teste-tecnico-automacoes.md` (original briefing); current architecture and decisions live in `README.md`.
 
 ## Local Workflows
 - Reusable repo workflows live in `.agent/workflows/*.md`.
@@ -41,7 +38,6 @@
 - Pause before changing public or externally consumed behavior unless the user explicitly asked for that change.
 
 ## References
-- Current product spec: `docs/superpowers/specs/2026-04-15-ticto-lp-design.md`
 - Original briefing: `docs/teste-tecnico-automacoes.md`
-- Research and supporting material: `docs/research/`
+- Current architecture and decisions: `README.md`
 - Local workflow registry: `.agent/workflows/`
