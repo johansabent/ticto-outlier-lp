@@ -67,9 +67,9 @@ export default function Page() {
           className="w-full lg:w-[488px] flex flex-col order-2 lg:sticky lg:top-24 lg:h-fit relative z-20 mt-[51px] lg:mt-0"
         >
           <div className="rounded-2xl bg-bg-white p-8 shadow-xl">
-            <p className="mb-6 font-tomato text-xs font-bold uppercase tracking-wider text-accent-teal">
+            <h2 className="mb-6 font-tomato text-xs font-bold uppercase tracking-wider text-accent-teal">
               CADASTRO 100% GRATUITO
-            </p>
+            </h2>
             <TypeformEmbed formId={NEXT_PUBLIC_TYPEFORM_FORM_ID} />
             <p className="mt-4 text-xs text-placeholder leading-relaxed">
               Ao enviar seus dados, você autoriza que a Ticto entre em contato e
