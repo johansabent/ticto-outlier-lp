@@ -18,7 +18,7 @@
     "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
-    "@typeform/embed-react": "^4.11.0",
+    "@typeform/embed-react": "^5.0.0",
     "@vercel/functions": "^3.0.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
